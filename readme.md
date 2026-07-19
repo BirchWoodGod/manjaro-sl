@@ -5,7 +5,8 @@ tool: **debloats a stock Manjaro install** (Manjaro-branded packages, unwanted
 preinstalled apps, printing/bluetooth stacks, old desktop environments and
 display managers) and **installs/configures a customized DWM suckless
 desktop** — dwm, dmenu (with j4-dmenu-desktop), st, slstatus, a Ly display
-manager, and from-scratch animated X11 wallpapers (Doom-fire, Matrix rain).
+manager, and from-scratch animated X11 wallpapers (Doom fire, Matrix rain,
+color gradients, Game of Life, black hole).
 It also doubles as a **reconfiguration tool**: re-run it on a machine it
 already set up and it auto-detects the existing setup and preloads current
 settings so you can change just the modkey, bar color, wallpaper, or
@@ -260,8 +261,9 @@ Options:
   --only SECTION            Restrict --apply to one section (repeatable):
                             install|debloat|tweaks|dwm|ly
   --profile FILE            Load previously saved selections from FILE
-  --wallpaper WP            Set dwm wallpaper animation: 'none', 'doomfire',
-                            or 'xmatrix'
+  --wallpaper WP            Set dwm wallpaper animation: 'none' or any built
+                            wallpaper (doomfire, xmatrix, xcolormix,
+                            xgameoflife, xblackhole)
   --enable-SLUG             Turn on a debloat/install entry by package name
   --disable-SLUG            Turn off a debloat/install entry by package name
   --interface IFACE         Set slstatus network interface

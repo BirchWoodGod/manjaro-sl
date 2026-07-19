@@ -19,7 +19,8 @@ Usage: ./manjaro-sl.sh [options] [component...]
 
 With no options, launches the interactive whiptail TUI for debloating
 Manjaro and installing dwm/suckless tools (dwm, dmenu, st, slstatus,
-doomfire, xmatrix) with a Ly display manager.
+doomfire, xmatrix, xcolormix, xgameoflife, xblackhole) with a Ly
+display manager.
 
 With any options, flags are processed left-to-right and build up the same
 selection state the TUI edits; pass --apply (or -y) to apply it
@@ -28,7 +29,7 @@ order, --preset NAME bulk-sets selections at the point it's parsed, so
 any --enable-*/--disable-* (or other) flags placed AFTER it on the command
 line override what the preset chose; flags placed before a --preset get
 overridden by it instead. Bare component names (dwm, dmenu, st, slstatus,
-doomfire, xmatrix — legacy build_suckless.sh muscle memory, e.g. `./manjaro-sl.sh
+or any built wallpaper — legacy build_suckless.sh muscle memory, e.g. `./manjaro-sl.sh
 st`) are applied last, after any --preset, and select only the named
 component(s) for building, overriding whatever components the preset chose.
 
@@ -43,7 +44,9 @@ Options:
   --only SECTION            Restrict --apply to one section (repeatable):
                             install|debloat|tweaks|dwm|ly
   --profile FILE            Load previously saved selections from FILE
-  --wallpaper WP            Set dwm wallpaper animation: 'none', 'doomfire', or 'xmatrix'
+  --wallpaper WP            Set dwm wallpaper animation: 'none' or any built
+                            wallpaper (doomfire, xmatrix, xcolormix,
+                            xgameoflife, xblackhole)
   --enable-SLUG             Turn on a debloat/install entry by package name
   --disable-SLUG            Turn off a debloat/install entry by package name
   --interface IFACE         Set slstatus network interface
@@ -802,7 +805,7 @@ parse_args() {
         if [ "$2" = none ] || { is_known_wallpaper "$2" && [ -d "$REPO_ROOT/$2" ]; }; then
           select_wallpaper "$2"
         else
-          echo "Error: --wallpaper must be 'none', $(available_wallpapers | tr '\n' ' ')." >&2
+          echo "Error: --wallpaper must be 'none' or one of: $(available_wallpapers | tr '\n' ' ' | sed 's/ $//')." >&2
           exit 1
         fi
         shift

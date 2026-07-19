@@ -1133,3 +1133,11 @@ assert_eq "$(grep -c 'phase 2\|phase-2' "$REPO_ROOT/lib/ly.sh")" "0"
 assert_eq "$(grep -c 'phase 2\|phase-2' "$REPO_ROOT/lib/wallpaper.sh")" "0"
 assert_contains "$(cat "$REPO_ROOT/readme.md")" "runs once per launch, but only on the interactive path"
 assert_eq "$(grep -c 'before flags override anything' "$REPO_ROOT/readme.md")" "0"
+
+# --help must advertise every shipped wallpaper (stale-help regression from
+# the plan-1 final review: usage() said 'doomfire or xmatrix' after five
+# wallpapers existed)
+help_out=$("$REPO_ROOT/manjaro-sl.sh" --help 2>&1)
+while IFS= read -r w; do
+  assert_contains "$help_out" "$w"
+done < <(available_wallpapers)
