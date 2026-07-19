@@ -31,6 +31,7 @@ denylisted() {
 
 profile_save() {
   local f="$1" key
+  mkdir -p "$(dirname "$f")"
   : > "$f"
   for key in "${!SELECTIONS[@]}"; do
     printf '%s=%s\n' "$key" "${SELECTIONS[$key]}" >> "$f"

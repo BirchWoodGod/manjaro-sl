@@ -81,6 +81,13 @@ profile_load "$pf"
 assert_eq "$(state_get debloat/bluez)" "on"
 rm -f "$pf"
 
+# profile_save creates missing parent directories (regression: apply_all died
+# at the final save when ~/.config/manjaro-sl didn't exist yet)
+pd=$(mktemp -d)
+assert_ok profile_save "$pd/newdir/profile"
+assert_ok test -f "$pd/newdir/profile"
+rm -rf "$pd"
+
 # preset_apply: recommended — file defaults for debloat-manjaro, apps stay
 # off, recommended installs on, doomfire wallpaper + doom ly animation
 unset SELECTIONS; declare -gA SELECTIONS
