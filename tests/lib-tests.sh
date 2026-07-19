@@ -67,6 +67,26 @@ profile_load "$pf"
 assert_eq "$(state_get debloat/bluez)" "on"
 rm -f "$pf"
 
+# preset_apply: recommended — file defaults for debloat-manjaro, apps stay
+# off, recommended installs on, doomfire wallpaper + doom ly animation
+unset SELECTIONS; declare -gA SELECTIONS
+preset_apply recommended
+assert_eq "$(state_get debloat/manjaro-hello)" "on"
+assert_eq "$(state_get debloat/pamac-gtk3)" "off"
+assert_eq "$(state_get install/feh)" "on"
+assert_eq "$(state_get dwm/wallpaper)" "doomfire"
+assert_eq "$(state_get ly/animation)" "doom"
+
+# preset_apply: minimal — everything (except warned items) removed, no
+# recommended installs, no wallpaper, but components still on
+unset SELECTIONS; declare -gA SELECTIONS
+preset_apply minimal
+assert_eq "$(state_get debloat/pamac-gtk3)" "on"
+assert_eq "$(state_get debloat/timeshift)" "off"
+assert_eq "$(state_get install/feh)" "off"
+assert_eq "$(state_get dwm/wallpaper)" "none"
+assert_eq "$(state_get component/dwm)" "on"
+
 source "$REPO_ROOT/lib/tui.sh"
 TUI_ACTIVE=0   # force fallback path for tests
 
@@ -91,6 +111,13 @@ for tool in bash grep sed awk cat head tr mktemp date basename dirname id find i
   p=$(command -v "$tool" 2>/dev/null) && ln -sf "$p" "$nosudo_dir/$tool"
 done
 out=$(env -i PATH="$nosudo_dir" HOME="$HOME" bash "$REPO_ROOT/build_suckless.sh" --help 2>&1); rc=$?
+assert_eq "$rc" "0"
+assert_contains "$out" "Usage:"
+
+# manjaro-sl.sh --help must also work without sudo on PATH (regression: the
+# sourcing order must put -h/--help handling before lib/common.sh, which
+# exits 1 if sudo is missing)
+out=$(env -i PATH="$nosudo_dir" HOME="$HOME" bash "$REPO_ROOT/manjaro-sl.sh" --help 2>&1); rc=$?
 assert_eq "$rc" "0"
 assert_contains "$out" "Usage:"
 rm -rf "$nosudo_dir"
@@ -157,3 +184,36 @@ assert_eq "$(ly_animation_to_wallpaper doom)" "doomfire"
 assert_eq "$(ly_animation_to_wallpaper matrix)" "none"
 
 HOME=$OLD_HOME
+
+# manjaro-sl.sh: preview_text renders grouped SELECTIONS. Sourced in a
+# subshell (bash -c) since manjaro-sl.sh sets `set -euo pipefail` at its own
+# top, which must not leak into this (non -e) test runner's shell.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  preview_text
+')
+assert_contains "$out" "REMOVE:"
+assert_contains "$out" "INSTALL:"
+assert_contains "$out" "BUILD:"
+assert_contains "$out" "CONFIGURE:"
+assert_contains "$out" "TWEAKS:"
+assert_contains "$out" "WALLPAPER:"
+assert_contains "$out" "(none)"
+
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  state_set debloat/manjaro-hello on
+  state_set install/feh on
+  state_set component/dwm on
+  state_set dwm/modkey super
+  state_set "tweak/enable:fstrim.timer" on
+  state_set dwm/wallpaper doomfire
+  preview_text
+')
+assert_contains "$out" "manjaro-hello"
+assert_contains "$out" "feh"
+assert_contains "$out" "modkey=super"
+assert_contains "$out" "enable:fstrim.timer"
+assert_contains "$out" "doomfire"
