@@ -10,15 +10,15 @@ _dims() { echo "20 72"; }   # rows cols; whiptail auto-grows lists
 
 tui_msgbox() {
   local title="$1" text="$2"
-  if _tui; then whiptail --title "$title" --msgbox "$text" $(_dims); else
+  if _tui; then whiptail --title "$title" --msgbox "$text" $(_dims); else # shellcheck disable=SC2046
     printf '\n== %s ==\n%b\n' "$title" "$text" >&2
   fi
 }
 
 tui_yesno() {
   local title="$1" text="$2"
-  if _tui; then whiptail --title "$title" --yesno "$text" $(_dims); else
-    local ans; printf '%b ' "$text"; read -r -p "[y/N] " ans || ans=""
+  if _tui; then whiptail --title "$title" --yesno "$text" $(_dims); else # shellcheck disable=SC2046
+    local ans; printf '%b ' "$text" >&2; read -r -p "[y/N] " ans || ans=""
     [[ "$ans" =~ ^[Yy] ]]
   fi
 }
@@ -26,7 +26,7 @@ tui_yesno() {
 tui_input() {
   local title="$1" prompt="$2" def="$3"
   if _tui; then
-    whiptail --title "$title" --inputbox "$prompt" $(_dims) "$def" 3>&1 1>&2 2>&3
+    whiptail --title "$title" --inputbox "$prompt" $(_dims) "$def" 3>&1 1>&2 2>&3 # shellcheck disable=SC2046
   else
     local v; read -r -p "$prompt [$def]: " v || v=""
     echo "${v:-$def}"
@@ -37,7 +37,7 @@ tui_input() {
 tui_menu() {
   local title="$1" prompt="$2"; shift 2
   if _tui; then
-    whiptail --title "$title" --menu "$prompt" $(_dims) 10 "$@" 3>&1 1>&2 2>&3
+    whiptail --title "$title" --menu "$prompt" $(_dims) 10 "$@" 3>&1 1>&2 2>&3 # shellcheck disable=SC2046
     return
   fi
   local -a tags=() items=()
@@ -53,8 +53,8 @@ tui_checklist() {
   local title="$1" prompt="$2"; shift 2
   if _tui; then
     local out
-    out=$(whiptail --title "$title" --separate-output --checklist "$prompt" $(_dims) 10 "$@" 3>&1 1>&2 2>&3) || return 1
-    echo "$out" | tr '\n' ' '
+    out=$(whiptail --title "$title" --separate-output --checklist "$prompt" $(_dims) 10 "$@" 3>&1 1>&2 2>&3) || return 1 # shellcheck disable=SC2046
+    echo "$out" | tr '\n' ' ' | sed 's/ *$//'
     return
   fi
   local -a tags=() items=() states=()
@@ -78,7 +78,7 @@ tui_checklist() {
 tui_radiolist() {
   local title="$1" prompt="$2"; shift 2
   if _tui; then
-    whiptail --title "$title" --radiolist "$prompt" $(_dims) 10 "$@" 3>&1 1>&2 2>&3
+    whiptail --title "$title" --radiolist "$prompt" $(_dims) 10 "$@" 3>&1 1>&2 2>&3 # shellcheck disable=SC2046
     return
   fi
   local -a tags=() items=() states=()
