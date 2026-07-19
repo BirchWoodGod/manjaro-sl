@@ -809,3 +809,86 @@ assert_contains "$out" "enable=off"
 # repo org: the legacy wrapper is gone; bug report lives in docs/
 assert_fail test -e "$REPO_ROOT/build_suckless.sh"
 assert_ok test -f "$REPO_ROOT/docs/bug_report_and_recommendations.md"
+
+# --- v2 Task 5: Desktop Setup + Appearance menus --------------------------
+
+# appearance_menu drives its whole interactive walk off one stdin stream
+# (TUI_ACTIVE=0 fallback prompts all `read` from fd 0 in sequence); each
+# test below documents the exact keystroke sequence it feeds. The trailing
+# tui_menu re-read after the last state-changing pick always hits EOF (no
+# more lines in the herestring), which makes `read` fail, `n` come back
+# empty, and the fallback tui_menu echo nothing — so the outer `while true`
+# loop's `case "" in back|"") return 0` exits the menu for free without an
+# explicit "go back" keystroke.
+
+# 1) Unified Animation picker: top menu tag order is
+#    animation(1) advanced(2) enable(3) back(4); the Animation radiolist's
+#    tag order is doom(1) matrix(2) colormix(3) none(4) custom(5).
+#    "1\n2\n" => open Animation, pick "matrix" => ly/animation=matrix,
+#    dwm/wallpaper=xmatrix (ly_animation_to_wallpaper mapping),
+#    ly/match_wallpaper=on.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  appearance_menu
+  echo "anim=$(state_get ly/animation)"
+  echo "wp=$(state_get dwm/wallpaper)"
+  echo "match=$(state_get ly/match_wallpaper)"
+' <<< "1
+2
+")
+assert_contains "$out" "anim=matrix"
+assert_contains "$out" "wp=xmatrix"
+assert_contains "$out" "match=on"
+
+# 2) Custom animation: same top pick (1=Animation), radiolist pick "5"
+#    (custom = last tag), then the tui_input prompt reads the name verbatim.
+#    ly/animation stores the name as-is; dwm/wallpaper falls back to "none"
+#    since ly_animation_to_wallpaper only recognizes doom/matrix.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  appearance_menu
+  echo "anim=$(state_get ly/animation)"
+  echo "wp=$(state_get dwm/wallpaper)"
+' <<< "1
+5
+blackhole
+")
+assert_contains "$out" "anim=blackhole"
+assert_contains "$out" "wp=none"
+
+# 3) Advanced: top pick "2" (Advanced); its Ly-animation radiolist uses the
+#    same doom/matrix/colormix/none/custom tag order as Animation ("2" =
+#    matrix, stored directly into ly/animation with no wallpaper mapping);
+#    its desktop-wallpaper radiolist tag order is none(1) doomfire(2)
+#    xmatrix(3) ("2" = doomfire, stored directly into dwm/wallpaper). The
+#    two keys are set independently and ly/match_wallpaper is forced off.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  appearance_menu
+  echo "anim=$(state_get ly/animation)"
+  echo "wp=$(state_get dwm/wallpaper)"
+  echo "match=$(state_get ly/match_wallpaper)"
+' <<< "2
+2
+2
+")
+assert_contains "$out" "anim=matrix"
+assert_contains "$out" "wp=doomfire"
+assert_contains "$out" "match=off"
+
+# Menu integrity (static source assertions): task-oriented main menu items
+# present, legacy per-screen entrances and their tui_menu titles gone.
+main_menu_block=$(sed -n '/^main_menu() {/,/^}/p' "$REPO_ROOT/manjaro-sl.sh")
+assert_contains "$main_menu_block" 'desktop "Desktop Setup"'
+assert_contains "$main_menu_block" 'appearance "Appearance"'
+assert_eq "$(echo "$main_menu_block" | grep -o ';;' | wc -l)" "7"   # 7 case arms = 7 menu entries
+assert_eq "$(grep -c 'Reconfigure' "$REPO_ROOT/manjaro-sl.sh")" "0"
+assert_eq "$(grep -c '"Install DWM' "$REPO_ROOT/manjaro-sl.sh")" "0"
+assert_eq "$(grep -c '"Configure DWM' "$REPO_ROOT/manjaro-sl.sh")" "0"
+assert_eq "$(grep -c '"Ly Display Manager' "$REPO_ROOT/manjaro-sl.sh")" "0"
+assert_eq "$(grep -c '^install_screen()' "$REPO_ROOT/manjaro-sl.sh")" "0"
+assert_eq "$(grep -c '^dwm_menu()' "$REPO_ROOT/manjaro-sl.sh")" "0"
+assert_eq "$(grep -c '^ly_menu()' "$REPO_ROOT/manjaro-sl.sh")" "0"

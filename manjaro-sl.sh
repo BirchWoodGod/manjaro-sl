@@ -177,30 +177,6 @@ sanity_checks() {
   fi
 }
 
-# Checklist of components from DEFAULT_COMPONENTS (dwm dmenu st slstatus)
-# plus doomfire/xmatrix → SELECTIONS[component/*].
-install_screen() {
-  local -a comps=(dwm dmenu st slstatus doomfire xmatrix)
-  local -A descs=(
-    [dwm]="Window manager"
-    [dmenu]="Program launcher"
-    [st]="Terminal emulator"
-    [slstatus]="Status bar"
-    [doomfire]="DOOM fire X11 wallpaper animation"
-    [xmatrix]="Matrix rain X11 wallpaper animation"
-  )
-  local -a args=()
-  local c state
-  for c in "${comps[@]}"; do
-    state=$(state_get "component/$c")
-    args+=("$c" "${descs[$c]}" "$state")
-  done
-  local chosen
-  chosen=$(tui_checklist "Install DWM & suckless tools" "Space toggles, Enter confirms" "${args[@]}") || return 0
-  for c in "${comps[@]}"; do state_set "component/$c" off; done
-  local tag; for tag in $chosen; do state_set "component/$tag" on; done
-}
-
 # Loops a tui_menu over the four debloat categories + old DE/DM removal.
 debloat_menu() {
   while true; do
@@ -221,17 +197,43 @@ debloat_menu() {
   done
 }
 
-# Loops a tui_menu over dwm settings; each leaf is one tui_radiolist/
-# tui_checklist/tui_input call storing into SELECTIONS. "off" is used as the
-# sentinel for "keep current / auto-detect" (see apply_configuration).
-dwm_menu() {
+# Loops a tui_menu over the desktop-side settings: which components get
+# built, plus dwm/slstatus configuration knobs. Each leaf is one
+# tui_checklist/tui_radiolist/tui_input call storing into SELECTIONS. "off"
+# is used as the sentinel for "keep current / auto-detect" (see
+# apply_configuration). Wallpaper/animation live in appearance_menu instead —
+# this menu is scoped to what apply_configuration + build_selected_components
+# consume.
+desktop_setup_menu() {
   while true; do
     local pick
-    pick=$(tui_menu "Configure DWM" "Setting" \
-      modkey "Modkey (super/alt)" barcolor "Selected bar accent color" \
-      wallpaper "Wallpaper animation" battery "slstatus battery widget" \
-      interface "slstatus network interface" back "Back") || return 0
+    pick=$(tui_menu "Desktop Setup" "Setting" \
+      components "Components" modkey "Modkey (super/alt)" \
+      barcolor "Selected bar accent color" \
+      interface "slstatus network interface" \
+      battery "slstatus battery widget" back "Back") || return 0
     case "$pick" in
+      components)
+        local -a comps=(dwm dmenu st slstatus doomfire xmatrix)
+        local -A descs=(
+          [dwm]="Window manager"
+          [dmenu]="Program launcher"
+          [st]="Terminal emulator"
+          [slstatus]="Status bar"
+          [doomfire]="DOOM fire X11 wallpaper animation"
+          [xmatrix]="Matrix rain X11 wallpaper animation"
+        )
+        local -a args=()
+        local c state
+        for c in "${comps[@]}"; do
+          state=$(state_get "component/$c")
+          args+=("$c" "${descs[$c]}" "$state")
+        done
+        local chosen
+        chosen=$(tui_checklist "Components" "Space toggles, Enter confirms" "${args[@]}") || continue
+        for c in "${comps[@]}"; do state_set "component/$c" off; done
+        local tag; for tag in $chosen; do state_set "component/$tag" on; done
+        ;;
       modkey)
         local cur sel
         cur=$(state_get dwm/modkey)
@@ -246,25 +248,6 @@ dwm_menu() {
         cur=$(state_get dwm/barcolor); [ "$cur" = off ] && cur=""
         sel=$(tui_input "Bar color" "Hex color for the dwm selected bar (e.g. #268bd2); blank = keep current" "$cur") || continue
         if [ -n "$sel" ]; then state_set dwm/barcolor "$sel"; else state_set dwm/barcolor off; fi
-        ;;
-      wallpaper)
-        local cur sel
-        cur=$(state_get dwm/wallpaper); [ "$cur" = off ] && cur=none
-        sel=$(tui_radiolist "Wallpaper" "Choose dwm wallpaper animation" \
-          none     "None"     "$([ "$cur" = none ] && echo on || echo off)" \
-          doomfire "DOOM fire" "$([ "$cur" = doomfire ] && echo on || echo off)" \
-          matrix   "matrix (phase 2 — coming soon)"   off \
-          colormix "colormix (phase 2 — coming soon)" off) || continue
-        # matrix/colormix are stubs (see readme.md); picking one shows a
-        # notice and falls back to whatever was selected before instead of
-        # silently storing an animation dwm can't actually render.
-        case "$sel" in
-          matrix|colormix)
-            tui_msgbox "Wallpaper" "'${sel}' is a phase-2 stub and not implemented yet — keeping '${cur}'."
-            sel="$cur"
-            ;;
-        esac
-        state_set dwm/wallpaper "$sel"
         ;;
       battery)
         local cur chosen
@@ -283,36 +266,87 @@ dwm_menu() {
   done
 }
 
-# Loops a tui_menu over Ly settings: enable on boot, animation, and whether
-# the animation should be mirrored to the dwm wallpaper.
-ly_menu() {
+# Loops a tui_menu over appearance settings: a unified animation picker that
+# drives both the Ly login animation and the dwm desktop wallpaper together,
+# an Advanced escape hatch that decouples the two, and the Ly-on-boot
+# checkbox. "off" is the sentinel for dwm/wallpaper and ly/animation meaning
+# "none"/unset (see apply_configuration/wallpaper_apply).
+appearance_menu() {
   while true; do
     local pick
-    pick=$(tui_menu "Ly Display Manager" "Setting" \
-      enable "Enable Ly on boot" animation "Login animation" \
-      match "Sync animation to dwm wallpaper" back "Back") || return 0
+    pick=$(tui_menu "Appearance" "Setting" \
+      animation "Animation" advanced "Advanced" \
+      enable "Enable Ly on boot" back "Back") || return 0
     case "$pick" in
-      enable)
-        local cur chosen
-        cur=$(state_get ly/enable)
-        chosen=$(tui_checklist "Ly" "Space toggles, Enter confirms" enable "Enable and start Ly on next boot" "$cur") || continue
-        if [ -n "$chosen" ]; then state_set ly/enable on; else state_set ly/enable off; fi
-        ;;
       animation)
         local cur sel
         cur=$(state_get ly/animation); [ "$cur" = off ] && cur=none
-        sel=$(tui_radiolist "Ly animation" "Choose login animation" \
-          none     "None"     "$([ "$cur" = none ] && echo on || echo off)" \
-          doom     "Doom"     "$([ "$cur" = doom ] && echo on || echo off)" \
-          matrix   "Matrix"   "$([ "$cur" = matrix ] && echo on || echo off)" \
-          colormix "ColorMix" "$([ "$cur" = colormix ] && echo on || echo off)") || continue
-        state_set ly/animation "$sel"
+        sel=$(tui_radiolist "Animation" "Choose login animation (also sets the desktop wallpaper)" \
+          doom     "Doom"      "$([ "$cur" = doom ] && echo on || echo off)" \
+          matrix   "Matrix"    "$([ "$cur" = matrix ] && echo on || echo off)" \
+          colormix "ColorMix"  "$([ "$cur" = colormix ] && echo on || echo off)" \
+          none     "None"      "$([ "$cur" = none ] && echo on || echo off)" \
+          custom   "Custom…"   "$([[ "$cur" != doom && "$cur" != matrix && "$cur" != colormix && "$cur" != none ]] && echo on || echo off)") || continue
+        if [ "$sel" = custom ]; then
+          local name
+          name=$(tui_input "Ly animation" "Animation name" "$(state_get ly/animation)") || continue
+          # Trim leading/trailing whitespace; an all-whitespace/empty entry
+          # is treated as a cancel rather than storing a blank animation.
+          name=$(echo "$name" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+          [ -z "$name" ] && continue
+          state_set ly/animation "$name"
+          state_set dwm/wallpaper "$(ly_animation_to_wallpaper "$name")"
+          state_set ly/match_wallpaper on
+          tui_msgbox "Appearance" "Custom Ly animations have no desktop wallpaper counterpart yet — desktop wallpaper set to 'none'."
+        else
+          state_set ly/animation "$sel"
+          state_set dwm/wallpaper "$(ly_animation_to_wallpaper "$sel")"
+          state_set ly/match_wallpaper on
+          # colormix is a phase-2 stub for the desktop side (see
+          # lib/wallpaper.sh's ly_animation_to_wallpaper); "none" legitimately
+          # maps to "none" and needs no notice.
+          if [ "$sel" != none ] && [ "$(ly_animation_to_wallpaper "$sel")" = none ]; then
+            tui_msgbox "Appearance" "'${sel}' is a phase-2 stub for the desktop wallpaper — the Ly login screen will still use it, but no desktop wallpaper will be shown."
+          fi
+        fi
         ;;
-      match)
-        local cur chosen
-        cur=$(state_get ly/match_wallpaper)
-        chosen=$(tui_checklist "Ly" "Space toggles, Enter confirms" match_wallpaper "Sync dwm wallpaper to Ly animation" "$cur") || continue
-        if [ -n "$chosen" ]; then state_set ly/match_wallpaper on; else state_set ly/match_wallpaper off; fi
+      advanced)
+        local cur sel
+        cur=$(state_get ly/animation); [ "$cur" = off ] && cur=none
+        sel=$(tui_radiolist "Ly animation" "Choose login animation" \
+          doom     "Doom"      "$([ "$cur" = doom ] && echo on || echo off)" \
+          matrix   "Matrix"    "$([ "$cur" = matrix ] && echo on || echo off)" \
+          colormix "ColorMix"  "$([ "$cur" = colormix ] && echo on || echo off)" \
+          none     "None"      "$([ "$cur" = none ] && echo on || echo off)" \
+          custom   "Custom…"   "$([[ "$cur" != doom && "$cur" != matrix && "$cur" != colormix && "$cur" != none ]] && echo on || echo off)") || continue
+        if [ "$sel" = custom ]; then
+          local name
+          name=$(tui_input "Ly animation" "Animation name" "$(state_get ly/animation)") || continue
+          name=$(echo "$name" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+          [ -n "$name" ] && state_set ly/animation "$name"
+        else
+          state_set ly/animation "$sel"
+        fi
+        local curw selw
+        curw=$(state_get dwm/wallpaper); [ "$curw" = off ] && curw=none
+        selw=$(tui_radiolist "Desktop wallpaper" "Choose desktop wallpaper animation" \
+          none     "None"      "$([ "$curw" = none ] && echo on || echo off)" \
+          doomfire "DOOM fire" "$([ "$curw" = doomfire ] && echo on || echo off)" \
+          xmatrix  "Matrix rain" "$([ "$curw" = xmatrix ] && echo on || echo off)") || continue
+        state_set dwm/wallpaper "$selw"
+        state_set ly/match_wallpaper off
+        ;;
+      enable)
+        local cur sel
+        if [ -n "${SELECTIONS[ly/enable]+x}" ]; then
+          cur=$(state_get ly/enable)
+        else
+          cur=on   # unset ⇒ effectively "on" (see ly_step_should_run / preview_text's N1)
+        fi
+        sel=$(tui_radiolist "Ly on boot" "Enable the Ly display manager on boot?" \
+          yes "Yes" "$([ "$cur" = on ] && echo on || echo off)" \
+          no  "No"  "$([ "$cur" = on ] && echo off || echo on)") || continue
+        state_set ly/enable "$([ "$sel" = yes ] && echo on || echo off)"
         ;;
       back|"") return 0 ;;
     esac
@@ -577,10 +611,11 @@ apply_configuration() {
 
 # run_step's subshell isolation (see apply_configuration's comment above)
 # means a state_set made inside one run_step call never reaches the next
-# one. ly_menu's "sync animation to dwm wallpaper" option is normally
-# applied inline when set interactively, but during Preview & Apply nothing
-# ever runs ly_menu — so this parent-shell sync must happen once, before any
-# run_step call, or the dwm wallpaper picked via ly/match_wallpaper is lost.
+# one. appearance_menu's unified Animation picker (and its match_wallpaper
+# on/off toggling) is normally applied inline when set interactively, but
+# during Preview & Apply nothing ever runs appearance_menu — so this
+# parent-shell sync must happen once, before any run_step call, or the dwm
+# wallpaper implied by ly/match_wallpaper is lost.
 sync_ly_wallpaper() {
   if state_on ly/match_wallpaper; then
     state_set dwm/wallpaper "$(ly_animation_to_wallpaper "$(state_get ly/animation)")"
@@ -655,18 +690,17 @@ main_menu() {
   while true; do
     local pick
     pick=$(tui_menu "manjaro-sl" "$SETUP_BANNER — Main menu" \
-      install "Install DWM & suckless tools" \
-      debloat "Debloat Manjaro" dwm "Configure DWM" tweaks "System tweaks" \
-      ly "Ly display manager" preset "Apply preset" apply "Preview & apply" quit "Quit") || pick=quit
+      desktop "Desktop Setup"  appearance "Appearance" \
+      debloat "Debloat Manjaro"  tweaks "System Tweaks" \
+      preset "Presets"  apply "Preview & Apply"  quit "Quit") || pick=quit
     case "$pick" in
-      install)  install_screen ;;
-      debloat)  debloat_menu ;;
-      dwm)      dwm_menu ;;
-      tweaks)   tweaks_screen ;;
-      ly)       ly_menu ;;
-      preset)   local p; p=$(tui_radiolist "Preset" "Choose" recommended "Recommended" on minimal "Minimal" off) && preset_apply "$p" ;;
-      apply)    if tui_yesno "Preview" "$(preview_text)\n\nApply now?"; then apply_all; fi ;;
-      quit|"")  break ;;
+      desktop)    desktop_setup_menu ;;
+      appearance) appearance_menu ;;
+      debloat)    debloat_menu ;;
+      tweaks)     tweaks_screen ;;
+      preset)     local p; p=$(tui_radiolist "Preset" "Choose" recommended "Recommended" on minimal "Minimal" off) && preset_apply "$p" ;;
+      apply)      if tui_yesno "Preview" "$(preview_text)\n\nApply now?"; then apply_all; fi ;;
+      quit|"")    break ;;
     esac
   done
 }
