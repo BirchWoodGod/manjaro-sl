@@ -94,3 +94,22 @@ out=$(env -i PATH="$nosudo_dir" HOME="$HOME" bash "$REPO_ROOT/build_suckless.sh"
 assert_eq "$rc" "0"
 assert_contains "$out" "Usage:"
 rm -rf "$nosudo_dir"
+
+source "$REPO_ROOT/lib/debloat.sh"
+
+# filtering: fake pacman that says only 'bluez' is installed
+pacman() { [ "$1" = "-Qq" ] && { [ "$2" = "bluez" ]; return; }; command pacman "$@"; }
+out=$(debloat_installed_from "$REPO_ROOT/data/debloat-bluetooth.list")
+assert_contains "$out" "bluez|"
+assert_eq "$(echo "$out" | grep -c blueman)" "0"
+
+# denylist enforcement in apply: selecting a denylisted pkg must be refused
+declare -gA SELECTIONS=()
+state_set "debloat/manjaro-keyring" on
+state_set "debloat/bluez" on
+DRY_RUN=1
+out=$(debloat_apply)
+assert_contains "$out" "REFUSED (denylist): manjaro-keyring"
+assert_contains "$out" "+ sudo pacman -Rns"
+assert_contains "$out" "bluez"
+unset -f pacman
