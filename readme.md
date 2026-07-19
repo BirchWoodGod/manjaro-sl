@@ -1,110 +1,221 @@
-# Personal Suckless Desktop Setup
+# manjaro-sl
 
-This repository contains my patched builds of **dwm**, **dmenu**, **st**, and **slstatus** along with the supporting files I use to get a minimal Arch Linux desktop running quickly. Everything lives in this repo so I can clone it on a fresh install and have the same environment in a couple of commands.
+A WinUtil-inspired whiptail TUI for Manjaro Linux that does two things in one
+tool: **debloats a stock Manjaro install** (Manjaro-branded packages, unwanted
+preinstalled apps, printing/bluetooth stacks, old desktop environments and
+display managers) and **installs/configures a customized DWM suckless
+desktop** — dwm, dmenu (with j4-dmenu-desktop), st, slstatus, a Ly display
+manager, and a from-scratch animated Doom-fire wallpaper. It also doubles as
+a **reconfiguration tool**: re-run it on a machine it already set up to
+change the modkey, bar color, wallpaper, or debloat selections.
 
-> **Note**: The `build_suckless.sh` script was developed with assistance from AI to automate the setup process and provide an enhanced user experience with interactive menus and automatic configuration.
+> **Note**: This automation was developed with AI assistance to provide an
+> interactive whiptail TUI, safety-railed debloat engine, and reproducible
+> non-interactive/profile-based setup.
 
 ---
 
-## Quick Start: Automated Setup
-
-The recommended way to set up this desktop environment is using the `build_suckless.sh` script. It automates the entire process from package installation to component building and configuration.
-
-### What the Script Does
-
-The `build_suckless.sh` helper takes care of the entire workflow for a fresh install:
-
-- **Old DE/DM Removal**: Detects installed display managers (GDM, SDDM, LightDM, etc.) and desktop environments (GNOME, KDE Plasma, XFCE, i3, Sway, Hyprland, etc.) and offers to remove them before setting up dwm + Ly
-- **Build Artifact Cleaning**: Automatically cleans all previous build artifacts (binaries, object files, patch artifacts, build directories) before building to ensure a clean state
-- **Package Management**: Ensures the pacman `multilib` repository is enabled and installs any missing recommended desktop packages and build dependencies (`base-devel`, X11/Xft/Xinerama libraries) via `pacman` (using `sudo` when needed), including `meson` for building j4-dmenu-desktop
-- **Network Interface Detection**: Automatically detects available network interfaces and lets you choose which one to use for slstatus bandwidth widgets
-- **Battery Configuration**: Optionally enables battery percentage display in slstatus
-- **DWM Configuration**: Interactive menus to configure dwm modkey (Super/Alt) and status bar highlight color from popular themes (Solarized, Nord, Gruvbox) or custom hex values
-- **Ly Display Manager**: Automatically configures Ly display manager with animation selection (Doom, Matrix, ColorMix) and enables the service
-- **File Management**: Copies helper files from `misc0/` into place and builds each requested component
-- **Desktop Entry Support**: Automatically builds and integrates j4-dmenu-desktop with dmenu for desktop entry support
-
-### Usage Examples
+## Quick Start
 
 ```bash
-./build_suckless.sh            # full interactive run (dwm, dmenu, st, slstatus)
-./build_suckless.sh dwm st     # build only the components you name
-./build_suckless.sh -y         # keep current configs, auto-install packages, skip prompts
-./build_suckless.sh --help     # show all options
+git clone https://github.com/BirchWoodGod/manjaro-sl && cd manjaro-sl && ./manjaro-sl.sh
 ```
 
-### Interactive Run Process
+With no arguments, this launches the interactive TUI. If `whiptail` isn't
+available, install it with `sudo pacman -S libnewt` when prompted.
 
-During an interactive run the script will:
+<!-- TODO: screenshot after first release -->
 
-1. **Old DE/DM Detection & Removal**: Scan for installed display managers (GDM, SDDM, LightDM, etc.) and desktop environments (GNOME, KDE Plasma, XFCE, i3, Sway, Hyprland, etc.). If any are found, display them and ask whether to remove them. Removal disables their systemd services and runs `pacman -Rns` to cleanly uninstall them along with unused dependencies. Pass `--remove-de` to auto-remove or `--no-remove-de` to skip.
+---
 
-2. **Package Installation**: Ensure `/etc/pacman.conf` has the `[multilib]` repository enabled, then check `pacman` for the packages I normally install (`feh`, `ly`, `xorg`, `xorg-xinit`, `meson`, `fastfetch`, `htop`, `nano`, `networkmanager`, `network-manager-applet`, `tldr`, `brightnessctl`, `alsa-utils`, `firefox`, `net-tools`) plus build dependencies (`base-devel`, `libx11`, `libxft`, `libxinerama`, `freetype2`, `fontconfig`, `pkgconf`, `python`) and offer to install any that are missing. Pass `--skip-packages` if you want to handle this step yourself.
+## What It Does
 
-3. **Network Interface Selection**: Automatically detect available network interfaces and present a numbered menu for you to choose which one to use for slstatus bandwidth widgets.
+Launching `./manjaro-sl.sh` with no flags opens a whiptail main menu with
+these sections (selections stack across screens into one in-memory state
+until you apply them):
 
-4. **Battery Configuration**: Ask whether to display battery percentage in slstatus.
+1. **Reconfigure existing setup** — reads current values from `dwm/config.h`,
+   `slstatus/config.h`, `/etc/ly/config.ini`, and `~/.xinitrc` (or a saved
+   profile) and pre-checks every screen to match, so you can tweak just what
+   you want to change.
+2. **Install DWM & suckless tools** — checklist: `dwm`, `dmenu`, `st`,
+   `slstatus`, `doomfire`.
+3. **Debloat Manjaro** — submenu of category checklists: Manjaro-branded
+   packages, preinstalled apps, printing stack, bluetooth stack, and old
+   DE/DM removal.
+4. **Configure DWM** — modkey (Super/Alt), bar highlight color (theme presets
+   or custom hex), wallpaper animation, battery widget, network interface
+   (auto-detected).
+5. **System tweaks** — checklist of systemd service enable/disable toggles.
+6. **Ly display manager** — enable on boot, animation choice, and a "match
+   dwm wallpaper" checkbox that mirrors the Ly animation to the dwm
+   wallpaper.
+7. **Apply preset** — bulk-set every checklist to a curated **Recommended**
+   or **Minimal** profile (see table below); you can still hand-edit any
+   screen afterward.
+8. **Preview & apply** — shows every queued action, asks for final
+   confirmation, then executes debloat → tweaks → install → build → configure
+   → Ly → wallpaper in that order, logging each step to
+   `~/.local/state/manjaro-sl/run-<timestamp>.log`.
 
-5. **DWM Configuration**: 
-   - **Modkey Selection**: Choose between Super key (Windows/Command) or Alt key as the dwm modifier key
-   - **Color Selection**: Present an interactive menu to choose the dwm status bar highlight color from popular themes (Solarized, Nord, Gruvbox) or enter a custom hex value
+### Presets
 
-6. **File Management**: Offer to copy the helper files in `misc0/` to the correct locations:
-   - `misc0/xinitrc-config.txt` → `~/.xinitrc`
-   - `misc0/dwm.desktop` → `/usr/share/xsessions/dwm.desktop`
+| Category | Recommended | Minimal |
+|---|---|---|
+| Recommended packages (feh, meson, fastfetch, htop, nano, NetworkManager, tldr, brightnessctl, alsa-utils, firefox, net-tools...) | all checked | all unchecked |
+| Manjaro-branded debloat | checked, except `pamac*` and cosmetic packages (wallpapers, icons, grub theme) | all checked |
+| Preinstalled apps debloat | unchecked | checked (except `timeshift*`) |
+| Printing stack debloat | unchecked | unchecked |
+| Bluetooth stack debloat | unchecked | unchecked |
+| Old DE/DM removal | prompted | checked |
+| System tweaks | NetworkManager + fstrim on | NetworkManager + fstrim on |
+| Wallpaper | doomfire (matching Ly) | none |
 
-7. **Build Artifact Cleaning**: Automatically clean all previous build artifacts (binaries, object files, patch artifacts, build directories) to ensure a fresh build.
+`pamac*` is never auto-checked in Recommended (you keep a GUI package
+manager by default). `timeshift` and `manjaro-zsh-config` are **never**
+auto-checked by either preset — the TUI shows a warning next to them
+because removing them takes out your backup system or your zsh/
+powerlevel10k setup, and you have to check them yourself if you want them
+gone.
 
-8. **Component Building**: Build whichever components you requested (compiling as your user, with `sudo` only for `make install`). When building `dmenu`, j4-dmenu-desktop is automatically built and installed to enable desktop entry support.
+### Debloat safety rails
 
-9. **Ly Configuration**: After building dwm, automatically configure Ly display manager:
-   - Enable the Ly service and disable any other enabled display managers so they don't conflict on boot
-   - Present animation selection menu (Doom, Matrix, ColorMix, or none)
-   - Create backup of Ly config before making changes
-   - Start Ly immediately only if no graphical session is currently active (otherwise it takes over on next boot)
+The removal engine (`lib/debloat.sh`) has hard rules that no data file or
+flag can override:
 
-### Non-Interactive Usage
+- **Hardcoded denylist** checked before every removal batch — core system
+  packages (`manjaro-system`, `manjaro-keyring`, `archlinux-keyring`,
+  `manjaro-alsa`, `manjaro-gstreamer`, `manjaro-pipewire`, `mhwd*`,
+  `pacman`, `pacman-mirrors`, `sudo`, `systemd`, `base`, `filesystem`,
+  `linux*`, `networkmanager`) are refused even if a data file lists them.
+- **`pacman -Rns` only, never `-Rdd`** — dependency conflicts are shown and
+  that batch item is skipped rather than force-removed.
+- **The currently running display manager is never stopped**, only
+  disabled — it keeps running until next reboot so you're never dropped to
+  a black screen mid-session.
+- **Every removal batch is logged** with package versions to
+  `~/.local/state/manjaro-sl/removed-<timestamp>.log`.
 
-You can pre-seed answers with flags if you want a non-interactive run. Examples:
+### Wallpaper
+
+Ly's built-in animations are procedural TUI effects with no image-background
+support, so `manjaro-sl` recreates them natively as small suckless-style C
+programs (`config.def.h`, `Makefile`, MIT license) that link only against
+`libX11`, render into a pixmap, and set it as the X root window background
+(setting `_XROOTPMAP_ID`/`ESETROOT_PMAP_ID` so feh-style tools interoperate).
+They need an active X server but no window manager or compositor.
+
+- **`doomfire/`** (available now) — Fabien Sanglard's PSX Doom fire
+  algorithm, public domain, painted directly on the root window.
+- **`xmatrix`, `colormix`** — phase-2 stubs; the TUI marks them "coming
+  soon" until implemented.
+
+Frame rate is configurable in `doomfire/config.h` (copy from
+`config.def.h`) via the `FPS` constant — CPU cost scales roughly linearly
+with FPS, so lower it on older hardware. Fire buffer resolution (`FIRE_W`/
+`FIRE_H`) is also tunable: smaller buffers mean chunkier pixels but less
+CPU.
+
+---
+
+## Non-Interactive Usage
+
+Any flag switches `manjaro-sl.sh` out of the TUI-only path: flags are
+processed **left to right** and build up the same selection state the TUI
+edits, then `--apply` (or `-y`) executes it. Because parsing is strictly
+sequential, `--preset NAME` bulk-sets selections at the point it's parsed —
+`--enable-*`/`--disable-*` flags placed *after* a `--preset` override what
+the preset chose; flags placed *before* it get overridden by the preset
+instead. Bare component names (`dwm`, `dmenu`, `st`, `slstatus`, `doomfire`
+— legacy `build_suckless.sh` muscle memory) are applied last, after any
+preset, and restrict the build step to just the named component(s).
+
+```text
+Options:
+  -h, --help                Show this help message and exit
+  -y, --accept-defaults     Non-interactive; implies --apply unless already
+                            given
+  --apply                   Skip the TUI and apply the selections built up by
+                            the flags so far
+  --dry-run                 Print mutating commands instead of running them
+  --preset NAME             Bulk-apply a preset: 'recommended' or 'minimal'
+  --only SECTION            Restrict --apply to one section (repeatable):
+                            install|debloat|tweaks|dwm|ly
+  --profile FILE            Load previously saved selections from FILE
+  --wallpaper WP            Set dwm wallpaper animation: 'none' or 'doomfire'
+  --enable-SLUG             Turn on a debloat/install entry by package name
+  --disable-SLUG            Turn off a debloat/install entry by package name
+  --interface IFACE         Set slstatus network interface
+  --battery                 Enable the slstatus battery widget
+  --no-battery              Disable the slstatus battery widget
+  --bar-color COLOR         Hex color for the dwm selected bar
+  --modkey KEY              dwm modkey: 'super' or 'alt'
+  --remove-de               Mark installed old DEs/DMs for removal
+  --no-remove-de            Leave old DEs/DMs alone (default)
+  --skip-packages           Skip the recommended/build package install step
+  --copy-xinit              Copy the xinitrc helper to ~/.xinitrc
+  --no-copy-xinit           Skip copying the xinitrc helper
+  --copy-desktop            Copy the dwm.desktop session entry
+  --no-copy-desktop         Skip copying the dwm.desktop session entry
+```
+
+Run `./manjaro-sl.sh --help` for the full, authoritative flag list.
+
+### Examples
 
 ```bash
-./build_suckless.sh --interface wlan0 --battery --bar-color "#268bd2" --modkey super
-./build_suckless.sh --no-copy-desktop --copy-xinit dmenu
-./build_suckless.sh --skip-packages -y           # keep configs and skip the package check entirely
-./build_suckless.sh --remove-de                  # auto-remove old DMs and DEs before setup
-./build_suckless.sh --no-remove-de -y            # non-interactive, keep existing DMs/DEs
+./manjaro-sl.sh --preset minimal --dry-run --apply
+./manjaro-sl.sh -y
+./manjaro-sl.sh --interface wlan0 --battery
+./manjaro-sl.sh --only debloat --dry-run --apply
+./manjaro-sl.sh --wallpaper doomfire
+./manjaro-sl.sh --profile ~/.config/manjaro-sl/profile --apply
 ```
 
-### Command-Line Options
+### `--dry-run`, honestly
 
-The script supports various command-line options for customization:
+`--dry-run` makes the **debloat**, **tweaks**, and **install packages**
+steps print the exact `pacman`/`systemctl` commands they would run instead
+of executing them — safe to use for a preview on a real machine. The
+**build**, **configure**, **Ly**, and **wallpaper** steps write files and
+touch services directly rather than going through the same dry-run-aware
+command wrapper, so under `--dry-run` they are **skipped entirely** with a
+`[dry-run] skipping <step>` notice — they are not simulated. This is why
+`--only debloat --dry-run --apply` (or `--preset ... --dry-run --apply`) is
+the safe way to preview a run end-to-end: every step that would actually be
+skipped-not-simulated is one you probably don't need a preview of anyway.
 
-- `-h, --help` - Show help message and exit
-- `-y, --accept-defaults` - Skip interactive prompts and keep current settings
-- `--interface IFACE` - Set network interface for slstatus netspeed widgets
-- `--battery` - Enable the battery widget in slstatus
-- `--no-battery` - Disable the battery widget in slstatus
-- `--bar-color COLOR` - Hex color to use for the dwm selected bar background
-- `--modkey KEY` - Set dwm modkey: 'super' or 'alt' (default: alt)
-- `--copy-xinit` - Copy misc0/xinitrc-config.txt to ~/.xinitrc
-- `--no-copy-xinit` - Skip copying the xinitrc helper (useful with -y)
-- `--copy-desktop` - Copy misc0/dwm.desktop to /usr/share/xsessions/
-- `--no-copy-desktop` - Skip copying the desktop file (useful with -y)
-- `--remove-de` - Remove detected old display managers and desktop environments
-- `--no-remove-de` - Skip removing old display managers and desktop environments
-- `--skip-packages` - Skip the recommended/build package installation step
+---
 
-The script checks whether you are already root; otherwise it uses `sudo` if available. Run it from the repository root after adjusting any configuration you want.
+## Reconfigure Mode
+
+If you already ran `manjaro-sl.sh` on a machine, run it again — main menu
+option **1, "Reconfigure existing setup"**, reads your live configuration
+(`dwm/config.h`, `slstatus/config.h`, `/etc/ly/config.ini`, `~/.xinitrc`) or
+a saved profile at `~/.config/manjaro-sl/profile`, and pre-checks every
+screen to match what's already applied. Visit any menu to change a value
+(modkey, bar color, wallpaper animation, debloat selections, etc.), then use
+**Preview & apply** as normal — changed files are overwritten with backups
+using the existing `copy_with_backup` pattern, so nothing is silently lost.
+
+A successful **Preview & apply** run also saves your selections to
+`~/.config/manjaro-sl/profile`, which you can copy to another machine and
+load with `--profile FILE` to reproduce the same setup non-interactively.
 
 ---
 
 ## Manual Setup Reference
 
-> **Note**: The automated script above is the recommended approach. This section is provided as a reference for those who prefer manual setup or need to understand the individual steps.
+> **Note**: The TUI/automation above is the recommended approach. This
+> section is provided as a reference for those who prefer manual setup or
+> need to understand the individual steps. `build_suckless.sh` still works
+> as a **deprecated wrapper** — it forwards straight to
+> `./manjaro-sl.sh --only install "$@"` and prints a deprecation notice.
 
-### Minimal Arch install notes
-- I rely on `archinstall` because it gets me to a working base system fast.
-- Enable the `multilib` repo before installing extras by editing `/etc/pacman.conf` and ensuring the block below is uncommented (the automation will do this for you if needed):
+### Minimal Manjaro install notes
+- Enable the `multilib` repo before installing extras by editing
+  `/etc/pacman.conf` and ensuring the block below is uncommented (the
+  automation does this for you if needed):
 
   ```ini
   [multilib]
@@ -112,15 +223,19 @@ The script checks whether you are already root; otherwise it uses `sudo` if avai
   ```
 
 ### Recommended packages
-If you prefer to handle packages manually, install them with:
+If you prefer to handle packages manually, install the core + recommended
+sets from `data/install-core.list` and `data/install-recommended.list`:
 
 ```bash
-sudo pacman -Syu feh ly xorg xorg-xinit meson fastfetch htop nano networkmanager \
-  network-manager-applet tldr brightnessctl alsa-utils firefox net-tools
+sudo pacman -Syu base-devel libx11 libxft libxinerama freetype2 fontconfig \
+  pkgconf python libnewt xorg xorg-xinit ly \
+  feh meson fastfetch htop nano networkmanager network-manager-applet \
+  tldr brightnessctl alsa-utils firefox net-tools
 ```
 
 **Build dependencies for j4-dmenu-desktop:**
-j4-dmenu-desktop requires either Meson (preferred) or CMake to build. Install one of them:
+j4-dmenu-desktop requires either Meson (preferred) or CMake to build. Install
+one of them:
 
 ```bash
 sudo pacman -S meson        # Preferred build system
@@ -129,7 +244,9 @@ sudo pacman -S cmake         # Alternative build system
 ```
 
 ### Display manager: Ly
-Ly is my preferred display manager purely for the aesthetics. The automated script handles the complete setup, but if you prefer manual configuration:
+Ly is the preferred display manager purely for the aesthetics. The
+automated TUI handles the complete setup, but if you prefer manual
+configuration:
 
 ```bash
 sudo systemctl enable ly
@@ -138,43 +255,57 @@ sudo systemctl start ly
 
 Configuration lives at `/etc/ly/config.ini`. Available animations include:
 - `doom` - Doom-style animation
-- `matrix` - Matrix digital rain effect  
+- `matrix` - Matrix digital rain effect
 - `colormix` - Color mixing animation
 - `none` - No animation (default)
 
-The script automatically configures Ly with your chosen animation and enables the service.
+The TUI's Ly screen configures Ly with your chosen animation and enables the
+service; it never stops an already-running display manager.
 
 ### Xinitrc and desktop entry
 The `misc0` directory contains helper files:
 
 - `xinitrc-config.txt` – copy to `~/.xinitrc` if you start dwm manually.
-- `dwm.desktop` – copy to `/usr/share/xsessions/dwm.desktop` if you want a proper entry in display managers.
+- `dwm.desktop` – copy to `/usr/share/xsessions/dwm.desktop` if you want a
+  proper entry in display managers.
 
 ```bash
-cp /sl/misc0/xinitrc-config.txt ~/.xinitrc
-sudo cp /sl/misc0/dwm.desktop /usr/share/xsessions/dwm.desktop
+cp ~/manjaro-sl/misc0/xinitrc-config.txt ~/.xinitrc
+sudo cp ~/manjaro-sl/misc0/dwm.desktop /usr/share/xsessions/dwm.desktop
 ```
 
-
 ### Building the suckless components by hand
-Change into each directory (`dwm`, `dmenu`, `st`, `slstatus`) and run:
+Change into each directory (`dwm`, `dmenu`, `st`, `slstatus`, `doomfire`)
+and run:
 
 ```bash
 sudo make clean install
 ```
 
-Each project ships with a `config.h` you can tweak before building. `dwm` and `st` already include the patches I rely on (fullscreen, systray, scrollback, mouse scrolling).
+Each project ships with a `config.h` you can tweak before building (copy it
+from `config.def.h` first if it doesn't exist yet). `dwm` and `st` already
+include the patches this setup relies on (fullscreen, systray, scrollback,
+mouse scrolling).
 
 ### dmenu and Desktop Entry Support
-The `dmenu` component includes **j4-dmenu-desktop** for desktop entry support. When you build `dmenu`, the script automatically builds and installs j4-dmenu-desktop as well. This enables `dmenu_run` to show both:
+The `dmenu` component includes **j4-dmenu-desktop** for desktop entry
+support. When you build `dmenu` (via the TUI or `./manjaro-sl.sh dmenu`),
+j4-dmenu-desktop is automatically built and installed as well. This enables
+`dmenu_run` to show both:
 - Executables from your `$PATH`
 - Applications from `.desktop` files (including AppImage launcher entries)
 
-j4-dmenu-desktop source code is included in `dmenu/j4-dmenu-desktop/` and is licensed under **GPL-3.0-or-later** (see `dmenu/j4-dmenu-desktop/LICENSE`). The build script uses Meson (preferred) or CMake to build j4-dmenu-desktop, so ensure one of these is installed (see [Recommended packages](#recommended-packages) above).
+j4-dmenu-desktop source code is included in `dmenu/j4-dmenu-desktop/` and is
+licensed under **GPL-3.0-or-later** (see `dmenu/j4-dmenu-desktop/LICENSE`).
+The build uses Meson (preferred) or CMake, so ensure one of these is
+installed (see [Recommended packages](#recommended-packages) above).
 
-**Note:** j4-dmenu-desktop is a separate work and remains in its own subdirectory. The GPL license applies only to j4-dmenu-desktop, not to the rest of this repository (which uses MIT/X Consortium licenses for the suckless tools).
+**Note:** j4-dmenu-desktop is a separate work and remains in its own
+subdirectory. The GPL license applies only to j4-dmenu-desktop, not to the
+rest of this repository (which uses MIT/X Consortium licenses for the
+suckless tools).
 
 ---
 
 ## Status
-This is a living setup. Expect tweaks over time as I learn more and refine the workflow.
+This is a living setup. Expect tweaks over time as the tool is refined.

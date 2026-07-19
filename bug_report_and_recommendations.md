@@ -4,7 +4,7 @@ This report details the bugs identified and fixed in the `sl` repository, along 
 
 ## Bug Fixes
 
-A thorough analysis of the repository revealed several bugs, ranging from POSIX compliance issues to logical errors in the configuration scripts. All identified bugs have been fixed and the changes have been pushed to the `main` branch of the `BirchWoodGod/sl` repository. A complete diff of all changes is attached to this report.
+A thorough analysis of the repository revealed several bugs, ranging from POSIX compliance issues to logical errors in the configuration scripts. All identified bugs have been fixed and the changes have been pushed to the `main` branch of the `BirchWoodGod/manjaro-sl` repository. A complete diff of all changes is attached to this report.
 
 ### Summary of Fixed Bugs
 
