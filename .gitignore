@@ -28,3 +28,4 @@ dmenu/j4-dmenu-desktop/j4-dmenu-desktop
 dmenu/j4-dmenu-desktop/*.o
 dmenu/j4-dmenu-desktop/build/
 
+.superpowers/
