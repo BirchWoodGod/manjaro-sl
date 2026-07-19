@@ -253,7 +253,7 @@ assert_ok is_known_wallpaper xblackhole
 assert_fail is_known_wallpaper spinningcube
 # available = registry ∩ existing dirs; right now only doomfire+xmatrix exist
 avail=$(available_wallpapers | tr '\n' ' ')
-assert_eq "$avail" "doomfire xmatrix xcolormix xgameoflife xblackhole xstarfield xplasma "
+assert_eq "$avail" "doomfire xmatrix xcolormix xgameoflife xblackhole xstarfield xplasma xrain "
 # every registry member has a description
 for w in "${KNOWN_WALLPAPERS[@]}"; do
   assert_ok test -n "${WALLPAPER_DESCS[$w]:-}"
@@ -784,6 +784,15 @@ out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
 assert_eq "$rc" "0"
 build_line=$(echo "$out" | grep 'skipping Build components' || true)
 assert_contains "$build_line" "selected: xplasma"
+rm -rf "$t_home" "$t_state"
+
+# xrain is a valid positional component (sandboxed HOME/XDG_STATE_HOME, --dry-run)
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  xrain --dry-run --apply --skip-packages 2>&1); rc=$?
+assert_eq "$rc" "0"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "selected: xrain"
 rm -rf "$t_home" "$t_state"
 
 # 2. Unknown positional component name must error out clearly.

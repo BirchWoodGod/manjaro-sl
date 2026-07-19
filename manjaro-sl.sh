@@ -19,7 +19,7 @@ Usage: ./manjaro-sl.sh [options] [component...]
 
 With no options, launches the interactive whiptail TUI for debloating
 Manjaro and installing dwm/suckless tools (dwm, dmenu, st, slstatus,
-doomfire, xmatrix, xcolormix, xgameoflife, xblackhole, xstarfield, xplasma) with a Ly
+doomfire, xmatrix, xcolormix, xgameoflife, xblackhole, xstarfield, xplasma, xrain) with a Ly
 display manager.
 
 With any options, flags are processed left-to-right and build up the same
@@ -46,7 +46,7 @@ Options:
   --profile FILE            Load previously saved selections from FILE
   --wallpaper WP            Set dwm wallpaper animation: 'none' or any built
                             wallpaper (doomfire, xmatrix, xcolormix,
-                            xgameoflife, xblackhole, xstarfield, xplasma)
+                            xgameoflife, xblackhole, xstarfield, xplasma, xrain)
   --enable-SLUG             Turn on a debloat/install entry by package name
   --disable-SLUG            Turn off a debloat/install entry by package name
   --interface IFACE         Set slstatus network interface
