@@ -238,10 +238,46 @@ They need an active X server but no window manager or compositor.
   entry (see [Appearance](#appearance) for the `blackhole` naming
   convention).
 
-The next round (phase 3, continued) adds four more customs — `xstarfield`,
-`xplasma`, `xrain`, `xfireflies` — none of which have a matching Ly login
-animation, so they'll only ever be reachable via the Desktop wallpaper
-override.
+- **`xstarfield/`** (built) — flying starfield: stars spawn near the vanishing
+  point and accelerate outward as their depth decreases, dim when far and
+  brightening as they approach. Tunable in `xstarfield/config.h` (copy from
+  `config.def.h`): `FPS` (default 30), `NSTARS` (default 400), `SPEED`
+  (per-frame depth decrease, default 0.006), `STAR_COLOR` (default white
+  `0xffffff`, green alternative `0x00ff46` noted in the file), and `NSHADES`
+  (brightness levels, default 6).
+- **`xplasma/`** (built) — demoscene plasma: overlapping sine waves in x, y,
+  diagonal, and three independently-drifting time terms, mapped through a
+  cycling HSV hue and rendered into a scaled buffer (doomfire technique) each
+  frame. Tunable in `xplasma/config.h` (copy from `config.def.h`): `FPS`
+  (default 24), buffer resolution `BUF_W`/`BUF_H` (default 320x180), wave
+  frequencies `XFREQ`/`YFREQ`/`DFREQ` and time drifts
+  `TDRIFT1`/`TDRIFT2`/`TDRIFT3`, and palette `SAT`/`VAL` (default 0.80/0.60).
+- **`xrain/`** (built) — falling rain: per-column streaks fall at randomized
+  speeds/lengths with a 2-frame splash on impact, colored by speed along a
+  blue-grey ramp. Tunable in `xrain/config.h` (copy from `config.def.h`):
+  `FPS` (default 30), `COL_W` (column spacing in pixels, default 6),
+  `DENSITY`/`SPAWN_P` (active-column fraction and spawn probability, default
+  0.35/0.05), `SPEED_MIN`/`SPEED_MAX` and `LEN_MIN`/`LEN_MAX` (px/frame and
+  px ranges), `SPLASH` (0 to disable the impact tick), and the `RAMP[]`
+  slow-to-fast color array (default 3 blue-grey shades).
+- **`xfireflies/`** (built) — drifting fireflies: dots wander with a base
+  drift plus sinusoidal wobble, pulsing through brightness levels. Tunable
+  in `xfireflies/config.h` (copy from `config.def.h`): `FPS` (default 20),
+  `NFLIES` (default 40), `DRIFT`/`WANDER` (base speed and wander amplitude,
+  px/frame, default 0.6/0.8), `FLY_COLOR` (default warm yellow-green
+  `0xd8e878`), `NSHADES` (pulse brightness levels, default 8), and `DOT`
+  (dot size in pixels, default 3).
+
+These four are desktop-only: none has a matching Ly login animation, so
+they're only reachable via the Desktop wallpaper override (see
+[Appearance](#appearance)), the `--wallpaper` flag, or as a build component
+— never as a Ly `Animation` choice. The five above them stay reachable
+through all of those plus the Ly-matched `Animation` picker.
+
+Wallpapers are a registry (`KNOWN_WALLPAPERS` in `lib/wallpaper.sh`) gated on
+the directory existing, so future wallpapers are one-directory additions —
+drop in a `<name>/` with the same `config.def.h`/`Makefile`/binary shape and
+register it; no other code changes needed.
 
 ---
 
@@ -271,7 +307,8 @@ Options:
   --profile FILE            Load previously saved selections from FILE
   --wallpaper WP            Set dwm wallpaper animation: 'none' or any built
                             wallpaper (doomfire, xmatrix, xcolormix,
-                            xgameoflife, xblackhole)
+                            xgameoflife, xblackhole, xstarfield, xplasma,
+                            xrain, xfireflies)
   --enable-SLUG             Turn on a debloat/install entry by package name
   --disable-SLUG            Turn off a debloat/install entry by package name
   --interface IFACE         Set slstatus network interface
