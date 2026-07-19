@@ -366,7 +366,7 @@ main_menu() {
       dwm)      dwm_menu ;;
       tweaks)   tweaks_screen ;;
       ly)       ly_menu ;;
-      preset)   p=$(tui_radiolist "Preset" "Choose" recommended "Recommended" on minimal "Minimal" off) && preset_apply "$p" ;;
+      preset)   local p; p=$(tui_radiolist "Preset" "Choose" recommended "Recommended" on minimal "Minimal" off) && preset_apply "$p" ;;
       apply)    if tui_yesno "Preview" "$(preview_text)\n\nApply now?"; then apply_all; fi ;;
       quit|"")  break ;;
     esac
