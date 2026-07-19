@@ -118,6 +118,13 @@ LEGACY_Y=0
 # parse_args' handling below.
 declare -ga POSITIONAL_COMPONENTS=()
 
+# Set by detect_existing_setup (Task 4), called unconditionally in main()
+# before the interactive main menu (never in the non-interactive --apply
+# path). EXISTING_SETUP is 1 when any live-system signal fired; SETUP_BANNER
+# is the human-readable banner shown atop the main menu.
+EXISTING_SETUP=0
+SETUP_BANNER=""
+
 # section_enabled SECTION — true if --only wasn't used at all, or SECTION is
 # one of the values it was given. Sections: install|debloat|tweaks|dwm|ly.
 section_enabled() {
@@ -314,7 +321,7 @@ ly_menu() {
 
 # reconfigure_read_slstatus CFG_FILE — reads a slstatus config.h(-shaped)
 # file and state_sets dwm/interface and dwm/battery to match. Factored out
-# of reconfigure_load so it can be unit-tested against fixture files
+# of detect_existing_setup so it can be unit-tested against fixture files
 # directly. Guarded: a missing file is a no-op.
 reconfigure_read_slstatus() {
   local cfg="$1"
@@ -333,13 +340,23 @@ reconfigure_read_slstatus() {
   fi
 }
 
-# reconfigure_load pre-fills SELECTIONS from the live system: a saved
+# detect_existing_setup pre-fills SELECTIONS from the live system: a saved
 # profile first (if any), then values read straight from the installed
 # dwm config / slstatus config / Ly config / xinitrc override it. Every
 # file read is guarded so a fresh install (no config.h, no /etc/ly, no
-# ~/.xinitrc) is a no-op rather than an error.
-reconfigure_load() {
+# ~/.xinitrc) is a no-op rather than an error. It also decides whether this
+# looks like an existing setup at all (dwm binary on PATH, an Ly config
+# file, or ~/.xinitrc) and sets EXISTING_SETUP (0/1) + SETUP_BANNER
+# accordingly, for main() to show unconditionally before the main menu.
+#
+# Two testability seams (both default to real behavior so production
+# callers are unaffected): LY_CONFIG_OVERRIDE (default /etc/ly/config.ini)
+# is used for both the Ly existence check and the animation read;
+# DWM_CHECK_OVERRIDE=missing skips the `command -v dwm` signal.
+detect_existing_setup() {
   profile_load "$HOME/.config/manjaro-sl/profile" 2>/dev/null || true
+
+  local found_signal=0
 
   local cfg="$REPO_ROOT/dwm/config.h"
   [ -f "$cfg" ] || cfg="$REPO_ROOT/dwm/config.def.h"
@@ -358,9 +375,11 @@ reconfigure_load() {
   [ -f "$slcfg" ] || slcfg="$REPO_ROOT/slstatus/config.def.h"
   reconfigure_read_slstatus "$slcfg"
 
-  if [ -f /etc/ly/config.ini ]; then
+  local ly_config="${LY_CONFIG_OVERRIDE:-/etc/ly/config.ini}"
+  if [ -f "$ly_config" ]; then
+    found_signal=1
     local a
-    a=$(grep -E '^\s*animation\s*=' /etc/ly/config.ini 2>/dev/null | sed 's/.*=\s*//' | tr -d ' ' || true)
+    a=$(grep -E '^\s*animation\s*=' "$ly_config" 2>/dev/null | sed 's/.*=\s*//' | tr -d ' ' || true)
     [ -n "$a" ] && state_set ly/animation "$a"
     # Newer ly packages ship a per-tty ly@.service instead of ly.service;
     # `systemctl is-enabled 'ly@*.service'` doesn't glob, so check the
@@ -376,8 +395,18 @@ reconfigure_load() {
   else
     state_set dwm/wallpaper none
   fi
+  [ -f "$HOME/.xinitrc" ] && found_signal=1
 
-  tui_msgbox "Reconfigure" "Current settings loaded — visit any menu to change them, then Preview & Apply."
+  if [ "${DWM_CHECK_OVERRIDE:-}" != missing ] && command -v dwm >/dev/null 2>&1; then
+    found_signal=1
+  fi
+
+  EXISTING_SETUP=$found_signal
+  if [ "$EXISTING_SETUP" -eq 1 ]; then
+    SETUP_BANNER="existing setup detected — current settings loaded"
+  else
+    SETUP_BANNER="fresh setup"
+  fi
 }
 
 # Renders the current SELECTIONS grouped into the sections the design spec's
@@ -625,12 +654,11 @@ apply_all() {
 main_menu() {
   while true; do
     local pick
-    pick=$(tui_menu "manjaro-sl" "Main menu" \
-      reconfig "Reconfigure existing setup" install "Install DWM & suckless tools" \
+    pick=$(tui_menu "manjaro-sl" "$SETUP_BANNER — Main menu" \
+      install "Install DWM & suckless tools" \
       debloat "Debloat Manjaro" dwm "Configure DWM" tweaks "System tweaks" \
       ly "Ly display manager" preset "Apply preset" apply "Preview & apply" quit "Quit") || pick=quit
     case "$pick" in
-      reconfig) reconfigure_load ;;
       install)  install_screen ;;
       debloat)  debloat_menu ;;
       dwm)      dwm_menu ;;
@@ -832,6 +860,7 @@ main() {
     apply_all
   else
     sanity_checks
+    detect_existing_setup
     main_menu
   fi
 }

@@ -526,14 +526,16 @@ out=$(TUI_ACTIVE=1 bash -c '
 assert_contains "$out" "TUI_ACTIVE=0"
 assert_eq "$(echo "$out" | grep -c 'Install libnewt')" "0"
 
-# reconfigure_load pre-fills SELECTIONS from the live system: dwm/config.h's
+# detect_existing_setup pre-fills SELECTIONS from the live system: dwm/config.h's
 # real MODKEY/col_accent (repo-relative, deterministic) and "no ~/.xinitrc
 # wallpaper block" -> wallpaper none (HOME sandboxed to an empty tmp dir).
+# Sandbox also strips ly/dwm signals via the override seams so this reports
+# a fresh setup deterministically regardless of the host running the suite.
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
   export HOME=$(mktemp -d)
-  reconfigure_load >/dev/null 2>&1
+  LY_CONFIG_OVERRIDE=/nonexistent DWM_CHECK_OVERRIDE=missing detect_existing_setup >/dev/null 2>&1
   echo "modkey=$(state_get dwm/modkey)"
   echo "barcolor=$(state_get dwm/barcolor)"
   echo "wallpaper=$(state_get dwm/wallpaper)"
@@ -542,8 +544,37 @@ assert_contains "$out" "modkey="
 assert_contains "$out" "barcolor=#"
 assert_contains "$out" "wallpaper=none"
 
+# detect_existing_setup: existing setup signaled by ~/.xinitrc alone (ly/dwm
+# signals forced off via the override seams so this is deterministic).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  export HOME=$(mktemp -d)
+  touch "$HOME/.xinitrc"
+  EXISTING_SETUP=0; SETUP_BANNER=""
+  LY_CONFIG_OVERRIDE=/nonexistent DWM_CHECK_OVERRIDE=missing detect_existing_setup >/dev/null 2>&1
+  echo "existing=$EXISTING_SETUP"
+  echo "banner=$SETUP_BANNER"
+')
+assert_contains "$out" "existing=1"
+assert_contains "$out" "banner=existing setup detected"
+
+# detect_existing_setup: fresh setup — empty sandbox HOME (no ~/.xinitrc),
+# and dwm/ly signals forced off via the override seams.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  export HOME=$(mktemp -d)
+  EXISTING_SETUP=0; SETUP_BANNER=""
+  LY_CONFIG_OVERRIDE=/nonexistent DWM_CHECK_OVERRIDE=missing detect_existing_setup >/dev/null 2>&1
+  echo "existing=$EXISTING_SETUP"
+  echo "banner=$SETUP_BANNER"
+')
+assert_contains "$out" "existing=0"
+assert_contains "$out" "banner=fresh setup"
+
 # reconfigure_read_slstatus parses interface + battery-enabled state out of a
-# slstatus config.h-shaped fixture. Isolated from reconfigure_load / the
+# slstatus config.h-shaped fixture. Isolated from detect_existing_setup / the
 # repo's real slstatus/config.h so this is deterministic. Fixture 1: an
 # active (uncommented) battery_perc line -> battery=on.
 out=$(bash -c '
