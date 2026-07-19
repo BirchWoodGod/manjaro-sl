@@ -885,10 +885,12 @@ assert_ok test -f "$REPO_ROOT/docs/bug_report_and_recommendations.md"
 # explicit "go back" keystroke.
 
 # 1) Unified Animation picker: top menu tag order is
-#    animation(1) advanced(2) enable(3) back(4); the Animation radiolist
-#    gained a gameoflife entry (after matrix, before colormix) in P3 Task 5,
-#    so its tag order is now doom(1) matrix(2) gameoflife(3) colormix(4)
-#    none(5) custom(6).
+#    animation(1) wallpaper(2) enable(3) back(4) (single-ask Appearance:
+#    the Advanced escape hatch is gone, replaced by a Desktop wallpaper
+#    override item — see block 3 below); the Animation radiolist gained a
+#    gameoflife entry (after matrix, before colormix) in P3 Task 5, so its
+#    tag order is now doom(1) matrix(2) gameoflife(3) colormix(4) none(5)
+#    custom(6).
 #    "1\n2\n" => open Animation, pick "matrix" => ly/animation=matrix,
 #    dwm/wallpaper=xmatrix (ly_animation_to_wallpaper mapping),
 #    ly/match_wallpaper=on.
@@ -950,32 +952,88 @@ assert_contains "$out" "anim=blackhole"
 assert_contains "$out" "wp=xblackhole"
 assert_contains "$out" "comp=on"
 
-# 3) Advanced: top pick "2" (Advanced); its Ly-animation radiolist is
-#    untouched by P3 Task 5 (gameoflife was only added to the unified
-#    Animation radiolist, not this one) — still doom(1) matrix(2)
-#    colormix(3) none(4) custom(5) ("2" = matrix, stored directly into
-#    ly/animation with no wallpaper mapping);
-#    its desktop-wallpaper radiolist tag order is none(1) doomfire(2)
-#    xmatrix(3) ("2" = doomfire, stored directly into dwm/wallpaper). The
-#    two keys are set independently and ly/match_wallpaper is forced off.
+# 3) Desktop wallpaper override (replaces the old two-step Advanced flow):
+#    top menu tag order is animation(1) wallpaper(2) enable(3) back(4). The
+#    "Desktop wallpaper" radiolist's tag order is match(1) none(2), then
+#    available_wallpapers() in KNOWN_WALLPAPERS registry order filtered to
+#    directories that exist in this checkout — doomfire(3) xmatrix(4)
+#    xcolormix(5) xgameoflife(6) xblackhole(7).
+#
+# 3a) Animation matrix (unified picker, still match=on) then override the
+#     desktop wallpaper to doomfire: wallpaper=doomfire, match=off,
+#     component/doomfire implied on (I1 chokepoint guarantee).
+#     Keystrokes: 1=Animation, 2=matrix radiolist pick, 2=Desktop wallpaper
+#     (back at top menu), 3=doomfire radiolist pick, 4=Back.
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
-  appearance_menu
-  echo "anim=$(state_get ly/animation)"
-  echo "wp=$(state_get dwm/wallpaper)"
-  echo "match=$(state_get ly/match_wallpaper)"
-  echo "comp=$(state_get component/doomfire)"
-' <<< "2
+  appearance_menu <<EOF2
+1
 2
 2
-")
+3
+4
+EOF2
+  echo "anim=$(state_get ly/animation) wp=$(state_get dwm/wallpaper) match=$(state_get ly/match_wallpaper) comp=$(state_get component/doomfire)"
+' 2>/dev/null | tail -1)
 assert_contains "$out" "anim=matrix"
 assert_contains "$out" "wp=doomfire"
 assert_contains "$out" "match=off"
-# I1: the Advanced desktop-wallpaper radiolist is also a select_wallpaper
-# chokepoint — same guarantee as the unified picker above.
 assert_contains "$out" "comp=on"
+
+# 3b) Continuing from an override, re-picking "Match" re-derives the
+#     wallpaper from the current ly/animation (still matrix) and flips
+#     ly/match_wallpaper back on.
+#     Keystrokes: 1=Animation, 2=matrix, 2=Desktop wallpaper, 3=doomfire
+#     (override), 2=Desktop wallpaper again, 1=match radiolist pick, 4=Back.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  appearance_menu <<EOF2
+1
+2
+2
+3
+2
+1
+4
+EOF2
+  echo "anim=$(state_get ly/animation) wp=$(state_get dwm/wallpaper) match=$(state_get ly/match_wallpaper)"
+' 2>/dev/null | tail -1)
+assert_contains "$out" "anim=matrix"
+assert_contains "$out" "wp=xmatrix"
+assert_contains "$out" "match=on"
+
+# 3c) With an explicit override active (match=off), re-visiting Animation
+#     and picking a fixed radiolist entry must leave dwm/wallpaper alone —
+#     the Animation-branch guard only re-derives when match_wallpaper is
+#     unset or on.
+#     Keystrokes: 1=Animation, 2=matrix, 2=Desktop wallpaper, 3=doomfire
+#     (override, match=off), 1=Animation again, 1=doom radiolist pick, 4=Back.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  appearance_menu <<EOF2
+1
+2
+2
+3
+1
+1
+4
+EOF2
+  echo "anim=$(state_get ly/animation) wp=$(state_get dwm/wallpaper) match=$(state_get ly/match_wallpaper) comp=$(state_get component/doomfire)"
+' 2>/dev/null | tail -1)
+assert_contains "$out" "anim=doom"
+assert_contains "$out" "wp=doomfire"
+assert_contains "$out" "match=off"
+assert_contains "$out" "comp=on"
+
+# Menu integrity: the Advanced escape hatch is gone from appearance_menu's
+# tui_menu call, replaced by "Desktop wallpaper".
+appearance_block=$(sed -n '/^appearance_menu() {/,/^}/p' "$REPO_ROOT/manjaro-sl.sh")
+assert_eq "$(echo "$appearance_block" | grep -c 'Advanced')" "0"
+assert_contains "$appearance_block" 'Desktop wallpaper'
 
 # --- P3 Task 5: gameoflife + colormix join the unified picker's real
 #     mappings -----------------------------------------------------------
@@ -1038,7 +1096,7 @@ assert_eq "$(grep -c '^ly_menu()' "$REPO_ROOT/manjaro-sl.sh")" "0"
 # exec'd by wallpaper.sh's launcher, silently, since the launcher runs
 # backgrounded from ~/.xinitrc. select_wallpaper is the fix's single
 # chokepoint; the CLI --wallpaper flag is one of its call sites (see also
-# the appearance_menu unified/Advanced assertions added above).
+# the appearance_menu unified/Desktop wallpaper assertions added above).
 t_home=$(mktemp -d); t_state=$(mktemp -d)
 out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
   --preset recommended --wallpaper xmatrix --dry-run --apply 2>&1); rc=$?

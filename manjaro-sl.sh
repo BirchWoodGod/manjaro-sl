@@ -278,7 +278,7 @@ desktop_setup_menu() {
 # its component gets exec'd by wallpaper.sh's launcher without ever having
 # been built or installed (I1 — flagship final-review-v2 bug; the launcher
 # runs backgrounded from ~/.xinitrc, so the failure is silent). Every call
-# site that sets dwm/wallpaper (appearance_menu's unified/custom/Advanced
+# site that sets dwm/wallpaper (appearance_menu's animation/custom/wallpaper
 # branches, the --wallpaper flag, and sync_ly_wallpaper) must go through
 # this instead of calling state_set directly.
 # Components flipped on implicitly by select_wallpaper, as opposed to picked
@@ -298,14 +298,16 @@ select_wallpaper() {
 
 # Loops a tui_menu over appearance settings: a unified animation picker that
 # drives both the Ly login animation and the dwm desktop wallpaper together,
-# an Advanced escape hatch that decouples the two, and the Ly-on-boot
-# checkbox. "off" is the sentinel for dwm/wallpaper and ly/animation meaning
-# "none"/unset (see apply_configuration/wallpaper_apply).
+# a Desktop wallpaper override item that decouples the two (single-ask:
+# "Match login animation (default)" vs. a specific wallpaper — see the
+# wallpaper) case below), and the Ly-on-boot checkbox. "off" is the sentinel
+# for dwm/wallpaper and ly/animation meaning "none"/unset (see
+# apply_configuration/wallpaper_apply).
 appearance_menu() {
   while true; do
     local pick
     pick=$(tui_menu "Appearance" "Setting" \
-      animation "Animation" advanced "Advanced" \
+      animation "Animation" wallpaper "Desktop wallpaper" \
       enable "Enable Ly on boot" back "Back") || return 0
     case "$pick" in
       animation)
@@ -326,58 +328,64 @@ appearance_menu() {
           name=$(echo "$name" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
           [ -z "$name" ] && continue
           state_set ly/animation "$name"
-          mapped=$(ly_animation_to_wallpaper "$name")
-          select_wallpaper "$mapped"
-          state_set ly/match_wallpaper on
-          # M4: most custom names have no desktop-wallpaper counterpart, but
-          # ly_animation_to_wallpaper still recognizes "doom"/"matrix"/
-          # "gameoflife"/"colormix" (all also on the radiolist) and
-          # "blackhole" (Custom…-only — see lib/wallpaper.sh) typed here —
-          # mirror the non-custom branch's messaging instead of
-          # unconditionally claiming "set to 'none'" when it wasn't.
-          if [ "$mapped" = none ]; then
-            tui_msgbox "Appearance" "Custom Ly animations have no desktop wallpaper counterpart yet — desktop wallpaper set to 'none'."
+          if [ -n "${SELECTIONS[ly/match_wallpaper]+x}" ] && ! state_on ly/match_wallpaper; then
+            : # explicit desktop override active — leave dwm/wallpaper alone
           else
-            tui_msgbox "Appearance" "'${name}' matches a known desktop wallpaper — desktop wallpaper set to '${mapped}'."
+            mapped=$(ly_animation_to_wallpaper "$name")
+            select_wallpaper "$mapped"
+            state_set ly/match_wallpaper on
+            # M4: most custom names have no desktop-wallpaper counterpart, but
+            # ly_animation_to_wallpaper still recognizes "doom"/"matrix"/
+            # "gameoflife"/"colormix" (all also on the radiolist) and
+            # "blackhole" (Custom…-only — see lib/wallpaper.sh) typed here —
+            # mirror the non-custom branch's messaging instead of
+            # unconditionally claiming "set to 'none'" when it wasn't.
+            if [ "$mapped" = none ]; then
+              tui_msgbox "Appearance" "Custom Ly animations have no desktop wallpaper counterpart yet — desktop wallpaper set to 'none'."
+            else
+              tui_msgbox "Appearance" "'${name}' matches a known desktop wallpaper — desktop wallpaper set to '${mapped}'."
+            fi
           fi
         else
           state_set ly/animation "$sel"
-          select_wallpaper "$(ly_animation_to_wallpaper "$sel")"
-          state_set ly/match_wallpaper on
-          # Every fixed radiolist entry (doom/matrix/gameoflife/colormix/none)
-          # now maps to a real wallpaper or legitimately to "none" — no stub
-          # notice needed here. Unmapped names only reach the Custom… branch
-          # above, whose own notice covers that case.
+          if [ -n "${SELECTIONS[ly/match_wallpaper]+x}" ] && ! state_on ly/match_wallpaper; then
+            : # explicit desktop override active — leave dwm/wallpaper alone
+          else
+            select_wallpaper "$(ly_animation_to_wallpaper "$sel")"
+            state_set ly/match_wallpaper on
+            # Every fixed radiolist entry (doom/matrix/gameoflife/colormix/none)
+            # now maps to a real wallpaper or legitimately to "none" — no stub
+            # notice needed here. Unmapped names only reach the Custom… branch
+            # above, whose own notice covers that case.
+          fi
         fi
         ;;
-      advanced)
-        local cur sel
-        cur=$(state_get ly/animation); [ "$cur" = off ] && cur=none
-        sel=$(tui_radiolist "Ly animation" "Choose login animation" \
-          doom     "Doom"      "$([ "$cur" = doom ] && echo on || echo off)" \
-          matrix   "Matrix"    "$([ "$cur" = matrix ] && echo on || echo off)" \
-          colormix "ColorMix"  "$([ "$cur" = colormix ] && echo on || echo off)" \
-          none     "None"      "$([ "$cur" = none ] && echo on || echo off)" \
-          custom   "Custom…"   "$([[ "$cur" != doom && "$cur" != matrix && "$cur" != colormix && "$cur" != none ]] && echo on || echo off)") || continue
-        if [ "$sel" = custom ]; then
-          local name
-          name=$(tui_input "Ly animation" "Animation name" "$(state_get ly/animation)") || continue
-          name=$(echo "$name" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-          [ -n "$name" ] && state_set ly/animation "$name"
+      wallpaper)
+        local curw selw effective
+        # Pre-select: "match" when match_wallpaper is on or unset; else the
+        # current override value.
+        if [ -z "${SELECTIONS[ly/match_wallpaper]+x}" ] || state_on ly/match_wallpaper; then
+          effective=match
         else
-          state_set ly/animation "$sel"
+          effective=$(state_get dwm/wallpaper); [ "$effective" = off ] && effective=none
         fi
-        local curw selw
-        curw=$(state_get dwm/wallpaper); [ "$curw" = off ] && curw=none
-        local -a wp_args=(none "None" "$([ "$curw" = none ] && echo on || echo off)")
+        local -a wp_args=(
+          match "Match login animation (default)" "$([ "$effective" = match ] && echo on || echo off)"
+          none  "None"                            "$([ "$effective" = none ] && echo on || echo off)"
+        )
         local w
         while IFS= read -r w; do
-          wp_args+=("$w" "${WALLPAPER_DESCS[$w]}" "$([ "$curw" = "$w" ] && echo on || echo off)")
+          wp_args+=("$w" "${WALLPAPER_DESCS[$w]}" "$([ "$effective" = "$w" ] && echo on || echo off)")
         done < <(available_wallpapers)
-        selw=$(tui_radiolist "Desktop wallpaper" "Choose desktop wallpaper animation" \
+        selw=$(tui_radiolist "Desktop wallpaper" "Override the desktop wallpaper, or keep it matched to the login animation" \
           "${wp_args[@]}") || continue
-        select_wallpaper "$selw"
-        state_set ly/match_wallpaper off
+        if [ "$selw" = match ]; then
+          state_set ly/match_wallpaper on
+          select_wallpaper "$(ly_animation_to_wallpaper "$(state_get ly/animation)")"
+        else
+          select_wallpaper "$selw"
+          state_set ly/match_wallpaper off
+        fi
         ;;
       enable)
         local cur sel

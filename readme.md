@@ -56,10 +56,10 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
    `xmatrix`), modkey (Super/Alt), bar highlight color (theme presets or
    custom hex), slstatus network interface (auto-detected), and the battery
    widget. Wallpaper/animation is not here — it lives in Appearance.
-2. **Appearance** — one screen for both the Ly login-screen animation and the
-   dwm desktop wallpaper (see [Appearance](#appearance) below for the full
-   mapping and Advanced/Custom… behavior), plus the "Enable Ly on boot"
-   checkbox.
+2. **Appearance** — a screen for the Ly login-screen animation, an optional
+   desktop wallpaper override, and the "Enable Ly on boot" checkbox (see
+   [Appearance](#appearance) below for the full mapping and Custom…/override
+   behavior).
 3. **Debloat Manjaro** — submenu of category checklists: Manjaro-branded
    packages, preinstalled apps, printing stack, bluetooth stack, and old
    DE/DM removal.
@@ -139,44 +139,52 @@ flag can override:
 
 ### Appearance
 
-The **Appearance** menu has one primary control: a radiolist —
-**doom / matrix / gameoflife / colormix / none / Custom…** — that drives
-BOTH the Ly login-screen animation and the dwm desktop wallpaper together
-(this sets `ly/match_wallpaper=on` under the hood):
+The **Appearance** menu is three items:
 
-| Ly animation choice | Desktop wallpaper |
-|---|---|
-| `doom` | `doomfire` |
-| `matrix` | `xmatrix` |
-| `gameoflife` | `xgameoflife` |
-| `colormix` | `xcolormix` |
-| `none` | `none` |
-| Custom… `blackhole` | `xblackhole` (see below) |
-| Custom… (any other name) | `none` |
+1. **Animation** — a radiolist — **doom / matrix / gameoflife / colormix /
+   none / Custom…** — that drives BOTH the Ly login-screen animation and the
+   dwm desktop wallpaper together (this sets `ly/match_wallpaper=on` under
+   the hood, unless a desktop wallpaper override is active — see below):
 
-Custom… opens a text prompt accepting **any** Ly animation name, written
-verbatim to `/etc/ly/config.ini`. This is the forward-compatibility path
-for animations `manjaro-sl` doesn't know about — Ly v1.4+ supports
-community `.dur` animation files (e.g. a black hole effect: Ly itself needs
-`animation = dur_file` plus `dur_file_path` pointing at the asset, which
-isn't expressible through this single-name prompt), which you can drop into
-your Ly config directory yourself. Typing `blackhole` here is a
-`manjaro-sl`-only convention layered on top: it doesn't configure Ly's side
-(you still set up the real `dur_file`/`dur_file_path` yourself for the
-login screen), but it now gets you the matching `xblackhole` desktop
-wallpaper. See [Ly's community animations](https://github.com/JBongars/ly-animation)
-for examples. There is no validation against the installed Ly version —
-any other unknown name is trimmed and passed through as-is; Ly
-ignores/falls back on names it doesn't recognize.
+   | Ly animation choice | Desktop wallpaper |
+   |---|---|
+   | `doom` | `doomfire` |
+   | `matrix` | `xmatrix` |
+   | `gameoflife` | `xgameoflife` |
+   | `colormix` | `xcolormix` |
+   | `none` | `none` |
+   | Custom… `blackhole` | `xblackhole` (see below) |
+   | Custom… (any other name) | `none` |
 
-An **Advanced: set login screen and desktop separately** toggle splits the
-one control into two independent radiolists — Ly login animation
-(`doom`/`matrix`/`colormix`/`none`/Custom…, not including `gameoflife` yet)
-and desktop wallpaper (`none` + every wallpaper whose program is built) —
-for combos the unified mapping can't express, like a `matrix` login screen
-with a `doomfire` desktop. Picking Advanced sets `ly/match_wallpaper=off`.
+   Custom… opens a text prompt accepting **any** Ly animation name, written
+   verbatim to `/etc/ly/config.ini`. This is the forward-compatibility path
+   for animations `manjaro-sl` doesn't know about — Ly v1.4+ supports
+   community `.dur` animation files (e.g. a black hole effect: Ly itself
+   needs `animation = dur_file` plus `dur_file_path` pointing at the asset,
+   which isn't expressible through this single-name prompt), which you can
+   drop into your Ly config directory yourself. Typing `blackhole` here is a
+   `manjaro-sl`-only convention layered on top: it doesn't configure Ly's
+   side (you still set up the real `dur_file`/`dur_file_path` yourself for
+   the login screen), but it now gets you the matching `xblackhole` desktop
+   wallpaper. See [Ly's community animations](https://github.com/JBongars/ly-animation)
+   for examples. There is no validation against the installed Ly version —
+   any other unknown name is trimmed and passed through as-is; Ly
+   ignores/falls back on names it doesn't recognize.
 
-The **Enable Ly on boot** checkbox also lives on this screen.
+2. **Desktop wallpaper** — a radiolist that overrides the desktop side
+   independently of the login animation: **Match login animation
+   (default)**, **None**, or any specific wallpaper whose program is built.
+   Picking **Match login animation** (the default, and what a fresh install
+   starts on) sets `ly/match_wallpaper=on` and re-derives the wallpaper from
+   whatever Animation is currently set to — including wallpapers with no Ly
+   counterpart, like `xstarfield`, only reachable this way. Picking any other
+   entry decouples the two: it sets `ly/match_wallpaper=off` and pins
+   `dwm/wallpaper` to that choice — for combos the unified mapping can't
+   express, like a `matrix` login screen with a `doomfire` desktop. Once
+   decoupled, changing Animation no longer touches the desktop wallpaper;
+   re-picking **Match login animation** here re-couples them.
+
+3. **Enable Ly on boot** — the on/off checkbox.
 
 ### Wallpaper
 
@@ -232,8 +240,8 @@ They need an active X server but no window manager or compositor.
 
 The next round (phase 3, continued) adds four more customs — `xstarfield`,
 `xplasma`, `xrain`, `xfireflies` — none of which have a matching Ly login
-animation, so they'll only ever be reachable via the Advanced desktop
-radiolist.
+animation, so they'll only ever be reachable via the Desktop wallpaper
+override.
 
 ---
 
