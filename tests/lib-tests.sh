@@ -84,3 +84,13 @@ assert_fail tui_yesno "T" "sure?" <<< "n"
 
 out=$(tui_input "T" "Color" "#112233" <<< "")
 assert_eq "$out" "#112233"
+
+# --help must work even when sudo is not on PATH (fresh-install scenario)
+nosudo_dir=$(mktemp -d)
+for tool in bash grep sed awk cat head tr mktemp date basename dirname id find ip; do
+  p=$(command -v "$tool" 2>/dev/null) && ln -sf "$p" "$nosudo_dir/$tool"
+done
+out=$(env -i PATH="$nosudo_dir" HOME="$HOME" bash "$REPO_ROOT/build_suckless.sh" --help 2>&1); rc=$?
+assert_eq "$rc" "0"
+assert_contains "$out" "Usage:"
+rm -rf "$nosudo_dir"

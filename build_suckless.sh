@@ -4,10 +4,6 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
-for m in common packages suckless configure ly; do
-  source "$REPO_ROOT/lib/$m.sh"
-done
-
 DEFAULT_COMPONENTS=(dwm dmenu st slstatus)
 
 ACCEPT_DEFAULTS=0
@@ -141,6 +137,10 @@ if [ ${#COMPONENT_ARGS[@]} -gt 0 ]; then
 else
   COMPONENTS=("${DEFAULT_COMPONENTS[@]}")
 fi
+
+for m in common packages suckless configure ly; do
+  source "$REPO_ROOT/lib/$m.sh"
+done
 
 detect_and_remove_old_de
 
