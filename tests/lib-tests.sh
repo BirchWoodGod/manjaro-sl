@@ -131,9 +131,6 @@ nosudo_dir=$(mktemp -d)
 for tool in bash grep sed awk cat head tr mktemp date basename dirname id find ip; do
   p=$(command -v "$tool" 2>/dev/null) && ln -sf "$p" "$nosudo_dir/$tool"
 done
-out=$(env -i PATH="$nosudo_dir" HOME="$HOME" bash "$REPO_ROOT/build_suckless.sh" --help 2>&1); rc=$?
-assert_eq "$rc" "0"
-assert_contains "$out" "Usage:"
 
 # manjaro-sl.sh --help must also work without sudo on PATH (regression: the
 # sourcing order must put -h/--help handling before lib/common.sh, which
@@ -653,26 +650,13 @@ rns_line=$(echo "$out" | grep 'Rns' || true)
 assert_eq "$(echo "$rns_line" | grep -c manjaro-hello)" "0"
 rm -rf "$t_home" "$t_state"
 
-# --- Task 11: legacy positional component args (`./manjaro-sl.sh st`,
-# `./build_suckless.sh st`) must select just that component instead of
-# hitting parse_args' unknown-option error path.
+# --- Task 11: legacy positional component args (`./manjaro-sl.sh st`) must
+# select just that component instead of hitting parse_args' unknown-option
+# error path.
 
-# 1. Legacy per-component invocation via the build_suckless.sh wrapper
-# (I2: the wrapper forwards args unchanged now, no `--only install`): must
-# succeed, still print the deprecation notice, and the dry-run
-# Build-components note must name only st, never dwm.
-t_home=$(mktemp -d); t_state=$(mktemp -d)
-out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/build_suckless.sh" \
-  st --dry-run --apply 2>&1); rc=$?
-assert_eq "$rc" "0"
-assert_contains "$out" "build_suckless.sh is deprecated"
-build_line=$(echo "$out" | grep 'skipping Build components' || true)
-assert_contains "$build_line" "selected: st"
-assert_eq "$(echo "$build_line" | grep -c 'dwm')" "0"
-rm -rf "$t_home" "$t_state"
-
-# 2. Same, called directly on manjaro-sl.sh with --skip-packages (isolates
-# the Build-components note from the Install-packages step).
+# 1. Legacy per-component invocation, called directly on manjaro-sl.sh with
+# --skip-packages (isolates the Build-components note from the
+# Install-packages step).
 t_home=$(mktemp -d); t_state=$(mktemp -d)
 out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
   st --dry-run --apply --skip-packages 2>&1); rc=$?
@@ -682,12 +666,12 @@ assert_contains "$build_line" "selected: st"
 assert_eq "$(echo "$build_line" | grep -c 'dwm')" "0"
 rm -rf "$t_home" "$t_state"
 
-# 3. Unknown positional component name must error out clearly.
+# 2. Unknown positional component name must error out clearly.
 out=$(HOME=$(mktemp -d) "$REPO_ROOT/manjaro-sl.sh" notacomponent --dry-run --apply 2>&1); rc=$?
 assert_eq "$rc" "1"
 assert_contains "$out" "Unknown component"
 
-# 4. Positional component names are applied after --preset, so they
+# 3. Positional component names are applied after --preset, so they
 # override the preset's own component selection (consistent with the
 # documented left-to-right-then-positionals rule).
 t_home=$(mktemp -d); t_state=$(mktemp -d)
@@ -716,22 +700,6 @@ assert_contains "$build_line" "dmenu"
 assert_contains "$build_line" "st"
 assert_contains "$build_line" "slstatus"
 assert_eq "$(echo "$build_line" | grep -c 'doomfire')" "0"
-rm -rf "$t_home" "$t_state"
-
-# I2: build_suckless.sh now forwards ALL args unchanged (no more `--only
-# install`), so plain `-y --dry-run` through the wrapper must behave exactly
-# like calling manjaro-sl.sh directly: deprecation notice on stderr, exit 0,
-# and the same seeded default component set from C1 above.
-t_home=$(mktemp -d); t_state=$(mktemp -d)
-out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/build_suckless.sh" \
-  --dry-run -y 2>&1); rc=$?
-assert_eq "$rc" "0"
-assert_contains "$out" "build_suckless.sh is deprecated"
-build_line=$(echo "$out" | grep 'skipping Build components' || true)
-assert_contains "$build_line" "dwm"
-assert_contains "$build_line" "dmenu"
-assert_contains "$build_line" "st"
-assert_contains "$build_line" "slstatus"
 rm -rf "$t_home" "$t_state"
 
 # --- N1/N2 follow-up review fixes ----------------------------------------
@@ -782,3 +750,9 @@ out=$(TUI_ACTIVE=0 bash -c '
   preview_text
 ')
 assert_contains "$out" "enable=off"
+
+# --- v2 Task 1: repo organization ----------------------------------------
+
+# repo org: the legacy wrapper is gone; bug report lives in docs/
+assert_fail test -e "$REPO_ROOT/build_suckless.sh"
+assert_ok test -f "$REPO_ROOT/docs/bug_report_and_recommendations.md"

@@ -127,9 +127,9 @@ edits, then `--apply` (or `-y`) executes it. Because parsing is strictly
 sequential, `--preset NAME` bulk-sets selections at the point it's parsed —
 `--enable-*`/`--disable-*` flags placed *after* a `--preset` override what
 the preset chose; flags placed *before* it get overridden by the preset
-instead. Bare component names (`dwm`, `dmenu`, `st`, `slstatus`, `doomfire`
-— legacy `build_suckless.sh` muscle memory) are applied last, after any
-preset, and restrict the build step to just the named component(s).
+instead. Bare component names (`dwm`, `dmenu`, `st`, `slstatus`, `doomfire`)
+are applied last, after any preset, and restrict the build step to just the
+named component(s).
 
 ```text
 Options:
@@ -209,9 +209,19 @@ load with `--profile FILE` to reproduce the same setup non-interactively.
 
 > **Note**: The TUI/automation above is the recommended approach. This
 > section is provided as a reference for those who prefer manual setup or
-> need to understand the individual steps. `build_suckless.sh` still works
-> as a **deprecated wrapper** — it forwards straight to
-> `./manjaro-sl.sh --only install "$@"` and prints a deprecation notice.
+> need to understand the individual steps.
+
+### Migrating from build_suckless.sh
+
+The old `build_suckless.sh` entry point has been removed. Use
+`manjaro-sl.sh` directly:
+
+| Old | New |
+|---|---|
+| `./build_suckless.sh` | `./manjaro-sl.sh -y` |
+| `./build_suckless.sh st dwm` | `./manjaro-sl.sh st dwm -y` |
+| `./build_suckless.sh --interface wlan0 --battery -y` | `./manjaro-sl.sh --interface wlan0 --battery -y` |
+| `./build_suckless.sh --skip-packages -y` | `./manjaro-sl.sh --skip-packages -y` |
 
 ### Minimal Manjaro install notes
 - Enable the `multilib` repo before installing extras by editing

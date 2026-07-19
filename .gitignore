@@ -29,3 +29,4 @@ dmenu/j4-dmenu-desktop/*.o
 dmenu/j4-dmenu-desktop/build/
 
 .superpowers/
+dmenu/j4-dmenu-desktop/subprojects/.wraplock
