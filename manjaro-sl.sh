@@ -275,11 +275,20 @@ desktop_setup_menu() {
 # site that sets dwm/wallpaper (appearance_menu's unified/custom/Advanced
 # branches, the --wallpaper flag, and sync_ly_wallpaper) must go through
 # this instead of calling state_set directly.
+# Components flipped on implicitly by select_wallpaper, as opposed to picked
+# by the user (checklist/positional/preset). seed_default_components must
+# ignore these when deciding whether the user chose components themselves —
+# otherwise `--wallpaper doomfire -y` would build only the wallpaper.
+declare -gA WALLPAPER_IMPLIED=()
+
 select_wallpaper() {
   local wp="$1"
   state_set dwm/wallpaper "$wp"
   case "$wp" in
-    doomfire|xmatrix) state_set "component/$wp" on ;;
+    doomfire|xmatrix)
+      state_set "component/$wp" on
+      WALLPAPER_IMPLIED["component/$wp"]=1
+      ;;
   esac
 }
 
@@ -328,11 +337,11 @@ appearance_menu() {
           state_set ly/animation "$sel"
           select_wallpaper "$(ly_animation_to_wallpaper "$sel")"
           state_set ly/match_wallpaper on
-          # colormix is a phase-2 stub for the desktop side (see
+          # colormix is a phase-3 stub for the desktop side (see
           # lib/wallpaper.sh's ly_animation_to_wallpaper); "none" legitimately
           # maps to "none" and needs no notice.
           if [ "$sel" != none ] && [ "$(ly_animation_to_wallpaper "$sel")" = none ]; then
-            tui_msgbox "Appearance" "'${sel}' is a phase-2 stub for the desktop wallpaper — the Ly login screen will still use it, but no desktop wallpaper will be shown."
+            tui_msgbox "Appearance" "'${sel}' is a phase-3 stub for the desktop wallpaper — the Ly login screen will still use it, but no desktop wallpaper will be shown."
           fi
         fi
         ;;
@@ -897,18 +906,22 @@ parse_args() {
   fi
 }
 
-# seed_default_components — if selections carry no component/* key at all
-# (bare/legacy runs with no --preset and no positional component names),
+# seed_default_components — if selections carry no USER-chosen component/*
+# key (bare/legacy runs with no --preset and no positional component names),
 # seed the legacy DEFAULT_COMPONENTS set (dwm dmenu st slstatus — NOT
 # doomfire, matching old build_suckless.sh) so "Build components" isn't
 # silently left empty. Presets and positional component args both set
-# component/* keys themselves, so this is a no-op whenever either was used;
-# called once selections are finalized, before dispatching to the TUI or
-# apply_all.
+# component/* keys themselves, so this is a no-op whenever either was used.
+# Keys implied by select_wallpaper (WALLPAPER_IMPLIED) don't count as a user
+# choice — `--wallpaper doomfire -y` must still build the default desktop —
+# and seeding is additive on top of them; called once selections are
+# finalized, before dispatching to the TUI or apply_all.
 seed_default_components() {
   local key
   for key in "${!SELECTIONS[@]}"; do
-    [[ "$key" == component/* ]] && return 0
+    [[ "$key" == component/* ]] || continue
+    [ -n "${WALLPAPER_IMPLIED[$key]:-}" ] && continue
+    return 0
   done
   local c
   for c in dwm dmenu st slstatus; do state_set "component/$c" on; done

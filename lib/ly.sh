@@ -301,6 +301,10 @@ configure_ly_display_manager() {
       # Sync dwm's wallpaper animation to the chosen Ly animation when the
       # user opted in. state.sh/wallpaper.sh aren't sourced on the legacy
       # build_suckless.sh path, so these calls must stay no-ops there.
+      # This bare state_set (not select_wallpaper) is deliberate: this
+      # interactive branch is unreachable from apply_all (which forces
+      # ACCEPT_DEFAULTS=1) and runs inside a run_step subshell after the
+      # Build step, so flipping component/* here could never build anything.
       if declare -F state_on >/dev/null 2>&1 && declare -F state_set >/dev/null 2>&1 \
         && declare -F ly_animation_to_wallpaper >/dev/null 2>&1 \
         && state_on ly/match_wallpaper; then

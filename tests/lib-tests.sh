@@ -755,6 +755,20 @@ assert_contains "$build_line" "slstatus"
 assert_eq "$(echo "$build_line" | grep -c 'doomfire')" "0"
 rm -rf "$t_home" "$t_state"
 
+# C1 regression (v2 final-review fix wave): `--wallpaper WP -y` must ADD the
+# wallpaper component to the default set, not suppress seeding — the
+# select_wallpaper chokepoint's implied component/* key must not make
+# seed_default_components think the user hand-picked components.
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --wallpaper doomfire -y --dry-run 2>&1); rc=$?
+assert_eq "$rc" "0"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "dwm"
+assert_contains "$build_line" "slstatus"
+assert_contains "$build_line" "doomfire"
+rm -rf "$t_home" "$t_state"
+
 # --- N1/N2 follow-up review fixes ----------------------------------------
 
 # N2: a legacy per-component invocation that doesn't include dwm (`st
