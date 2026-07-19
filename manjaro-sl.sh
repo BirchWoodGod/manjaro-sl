@@ -24,37 +24,45 @@ doomfire) with a Ly display manager.
 With any options, flags are processed left-to-right and build up the same
 selection state the TUI edits; pass --apply (or -y) to apply it
 non-interactively instead of opening the menu. Because flags apply in
-order, `--preset NAME` bulk-sets selections at the point it's parsed, so
+order, --preset NAME bulk-sets selections at the point it's parsed, so
 any --enable-*/--disable-* (or other) flags placed AFTER it on the command
 line override what the preset chose; flags placed before a --preset get
 overridden by it instead.
 
 Options:
-  -h, --help              Show this help message and exit
-  -y, --accept-defaults   Non-interactive; implies --apply unless it's
-                           already given
-      --apply             Skip the TUI and apply the selections built up by
-                           the flags so far
-      --dry-run           Print mutating commands instead of running them
-      --preset NAME        Bulk-apply a preset: 'recommended' or 'minimal'
-      --only SECTION       Restrict --apply to one section (repeatable):
-                           install|debloat|tweaks|dwm|ly
-      --profile FILE       Load previously saved selections from FILE
-      --wallpaper WP       Set dwm wallpaper animation: 'none' or 'doomfire'
-      --enable-SLUG         Turn on a debloat/install entry by package name
-      --disable-SLUG        Turn off a debloat/install entry by package name
-      --interface IFACE    Set slstatus network interface
-      --battery             Enable the slstatus battery widget
-      --no-battery           Disable the slstatus battery widget
-      --bar-color COLOR     Hex color for the dwm selected bar
-      --modkey KEY          dwm modkey: 'super' or 'alt'
-      --remove-de            Mark installed old DEs/DMs for removal
-      --no-remove-de         Leave old DEs/DMs alone (default)
-      --skip-packages        Skip the recommended/build package install step
-      --copy-xinit           Copy the xinitrc helper to ~/.xinitrc
-      --no-copy-xinit         Skip copying the xinitrc helper
-      --copy-desktop          Copy the dwm.desktop session entry
-      --no-copy-desktop       Skip copying the dwm.desktop session entry
+  -h, --help                Show this help message and exit
+  -y, --accept-defaults     Non-interactive; implies --apply unless already
+                            given
+  --apply                   Skip the TUI and apply the selections built up by
+                            the flags so far
+  --dry-run                 Print mutating commands instead of running them
+  --preset NAME             Bulk-apply a preset: 'recommended' or 'minimal'
+  --only SECTION            Restrict --apply to one section (repeatable):
+                            install|debloat|tweaks|dwm|ly
+  --profile FILE            Load previously saved selections from FILE
+  --wallpaper WP            Set dwm wallpaper animation: 'none' or 'doomfire'
+  --enable-SLUG             Turn on a debloat/install entry by package name
+  --disable-SLUG            Turn off a debloat/install entry by package name
+  --interface IFACE         Set slstatus network interface
+  --battery                 Enable the slstatus battery widget
+  --no-battery              Disable the slstatus battery widget
+  --bar-color COLOR         Hex color for the dwm selected bar
+  --modkey KEY              dwm modkey: 'super' or 'alt'
+  --remove-de               Mark installed old DEs/DMs for removal
+  --no-remove-de            Leave old DEs/DMs alone (default)
+  --skip-packages           Skip the recommended/build package install step
+  --copy-xinit              Copy the xinitrc helper to ~/.xinitrc
+  --no-copy-xinit           Skip copying the xinitrc helper
+  --copy-desktop            Copy the dwm.desktop session entry
+  --no-copy-desktop         Skip copying the dwm.desktop session entry
+
+Examples:
+  ./manjaro-sl.sh --preset minimal --dry-run --apply
+  ./manjaro-sl.sh -y
+  ./manjaro-sl.sh --interface wlan0 --battery
+  ./manjaro-sl.sh --only debloat --dry-run --apply
+  ./manjaro-sl.sh --wallpaper doomfire
+  ./manjaro-sl.sh --profile ~/.config/manjaro-sl/profile --apply
 EOF
 }
 
