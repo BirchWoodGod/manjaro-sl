@@ -22,6 +22,10 @@ tweaks_apply() {
     [[ "$key" == tweak/* ]] && [ "${SELECTIONS[$key]}" = on ] || continue
     action=${key#tweak/}; unit=${action#*:}; action=${action%%:*}
     if [ "$action" = "enable" ] && [ "$unit" = "ufw.service" ]; then
+      if ! command -v ufw >/dev/null 2>&1; then
+        echo "Warning: ufw not installed; skipping firewall setup." >&2
+        continue
+      fi
       run_mut sudo: ufw default deny incoming
       run_mut sudo: ufw enable
     fi

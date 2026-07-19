@@ -4,6 +4,16 @@
 # --dry-run can print instead of execute.
 
 DRY_RUN=${DRY_RUN:-0}
+# M3: normalize any inherited/exported DRY_RUN value that isn't a clean 0/1
+# (e.g. `DRY_RUN=true`, garbage from a caller's environment) — treat unknown
+# truthy strings as dry (1), never as live (0). This is the conservative
+# direction: an unrecognized value must never accidentally let mutating
+# commands execute for real.
+case "$DRY_RUN" in
+  0|1) ;;
+  ""|0*) DRY_RUN=0 ;;
+  *) DRY_RUN=1 ;;
+esac
 
 log_dir() {
   local d="${XDG_STATE_HOME:-$HOME/.local/state}/manjaro-sl"

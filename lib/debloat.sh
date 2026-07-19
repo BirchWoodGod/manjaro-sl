@@ -70,5 +70,12 @@ debloat_apply() {
     pacman -Q "${to_remove[@]}" > "$logf" 2>/dev/null || true
     echo "Removal list logged to $logf"
   fi
-  run_mut sudo: pacman -Rns "${to_remove[@]}"
+
+  # Mirrors lib/packages.sh's install path: ACCEPT_DEFAULTS=1 (non-interactive
+  # -y/--apply runs) means no one is at the terminal to answer pacman's
+  # confirmation prompt, so pass --noconfirm the same way installs do.
+  local -a pacman_cmd=(pacman -Rns)
+  [ "${ACCEPT_DEFAULTS:-0}" -eq 1 ] && pacman_cmd+=(--noconfirm)
+  pacman_cmd+=("${to_remove[@]}")
+  run_mut sudo: "${pacman_cmd[@]}"
 }

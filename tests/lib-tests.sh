@@ -15,6 +15,20 @@ run_mut touch "$tmpf" >/dev/null
 assert_ok test -e "$tmpf"
 rm -f "$tmpf"
 
+# M3: DRY_RUN normalization — an unknown truthy value like "true" (e.g. from
+# a caller's environment) must be treated as dry-run (1), the conservative
+# direction, never silently as live (0). Re-source lib/exec.sh since the
+# DRY_RUN=${DRY_RUN:-0} default + normalization case only run at source
+# time, not on every run_mut call.
+DRY_RUN=true
+source "$REPO_ROOT/lib/exec.sh"
+assert_eq "$DRY_RUN" "1"
+out=$(run_mut touch /tmp/manjaro-sl-should-never-exist-2)
+assert_contains "$out" "+ touch /tmp/manjaro-sl-should-never-exist-2"
+assert_fail test -e /tmp/manjaro-sl-should-never-exist-2
+DRY_RUN=0
+source "$REPO_ROOT/lib/exec.sh"
+
 # log_dir creates and echoes the state dir
 d=$(XDG_STATE_HOME=$(mktemp -d) log_dir)
 assert_ok test -d "$d"
@@ -140,6 +154,19 @@ assert_contains "$out" "REFUSED (denylist): manjaro-keyring"
 assert_contains "$out" "+ sudo pacman -Rns"
 assert_contains "$out" "bluez"
 unset -f pacman
+
+# I1: ACCEPT_DEFAULTS=1 (non-interactive -y/--apply runs) must pass
+# --noconfirm to the removal command too, mirroring lib/packages.sh's
+# install path — otherwise pacman -Rns's confirmation prompt blocks forever
+# with no one at the terminal to answer it.
+declare -gA SELECTIONS=()
+state_set "debloat/bluez" on
+DRY_RUN=1
+ACCEPT_DEFAULTS=1
+out=$(debloat_apply)
+assert_contains "$out" "+ sudo pacman -Rns --noconfirm"
+assert_contains "$out" "bluez"
+ACCEPT_DEFAULTS=0
 
 # preset_apply minimal marks installed old DEs/DMs for removal; recommended
 # leaves them untouched ("prompt" per the spec's preset table)
@@ -276,6 +303,28 @@ unset SELECTIONS; declare -gA SELECTIONS
 ACCEPT_DEFAULTS=1
 out=$(configure_ly_display_manager 2>&1)
 assert_eq "$(echo "$out" | grep -c 'Updating animation to')" "0"
+
+# C2: ly/enable is write-only otherwise — configure_ly_display_manager used
+# to unconditionally enable+start Ly regardless of the ly/enable checkbox.
+# Explicitly off must skip both, with a one-line note; run_with_privilege is
+# mocked to just echo (not actually invoke systemctl), so grepping its
+# recorded calls proves enable/start were never attempted.
+unset SELECTIONS; declare -gA SELECTIONS
+ACCEPT_DEFAULTS=1
+state_set ly/enable off
+out=$(configure_ly_display_manager 2>&1)
+assert_contains "$out" "skipping Ly service enable/start"
+assert_eq "$(echo "$out" | grep -c 'RWP: systemctl enable')" "0"
+assert_eq "$(echo "$out" | grep -c 'RWP: systemctl start')" "0"
+
+# ly/enable left unset (never explicitly set, as opposed to explicitly
+# "off") must keep today's behavior: enable is still attempted. state_get
+# alone can't tell these apart (both read as "off"), which is exactly the
+# bug the SELECTIONS-array check above guards against.
+unset SELECTIONS; declare -gA SELECTIONS
+ACCEPT_DEFAULTS=1
+out=$(configure_ly_display_manager 2>&1)
+assert_contains "$out" "RWP: systemctl enable"
 
 unset -f pacman systemctl run_with_privilege require_command
 
@@ -560,9 +609,17 @@ out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
 assert_eq "$rc" "0"
 rns_line=$(echo "$out" | grep 'pacman -Rns' || true)
 assert_contains "$rns_line" "+ sudo pacman -Rns"
-assert_contains "$rns_line" "manjaro-hello"
 assert_contains "$out" "+ sudo systemctl enable NetworkManager.service"
-assert_ok bash -c 'pacman -Qi manjaro-hello >/dev/null'
+# I6: these two assertions are host-coupled — they only hold if
+# manjaro-hello is actually installed on the machine running the suite
+# (proving the dry run left it untouched). Guard them so the suite still
+# passes on a host that's already been debloated.
+if pacman -Qi manjaro-hello >/dev/null 2>&1; then
+  assert_contains "$rns_line" "manjaro-hello"
+  assert_ok bash -c 'pacman -Qi manjaro-hello >/dev/null'
+else
+  echo "SKIP: manjaro-hello not installed (host already debloated?)"
+fi
 rm -rf "$t_home" "$t_state"
 
 t_home=$(mktemp -d); t_state=$(mktemp -d)
@@ -585,8 +642,9 @@ rm -rf "$t_home" "$t_state"
 # hitting parse_args' unknown-option error path.
 
 # 1. Legacy per-component invocation via the build_suckless.sh wrapper
-# (`--only install st`): must succeed, still print the deprecation notice,
-# and the dry-run Build-components note must name only st, never dwm.
+# (I2: the wrapper forwards args unchanged now, no `--only install`): must
+# succeed, still print the deprecation notice, and the dry-run
+# Build-components note must name only st, never dwm.
 t_home=$(mktemp -d); t_state=$(mktemp -d)
 out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/build_suckless.sh" \
   st --dry-run --apply 2>&1); rc=$?
@@ -623,4 +681,39 @@ assert_eq "$rc" "0"
 build_line=$(echo "$out" | grep 'skipping Build components' || true)
 assert_contains "$build_line" "selected: st"
 assert_eq "$(echo "$build_line" | grep -c 'dwm')" "0"
+rm -rf "$t_home" "$t_state"
+
+# --- Final review regressions -------------------------------------------
+
+# C1: a bare/legacy run with no --preset and no positional component names
+# must not leave every component/* unset ("Build components (selected:
+# none)") — seed_default_components seeds the legacy DEFAULT_COMPONENTS set
+# (dwm dmenu st slstatus — explicitly NOT doomfire, matching old
+# build_suckless.sh) whenever selections carry no component/* key at all.
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  -y --dry-run 2>&1); rc=$?
+assert_eq "$rc" "0"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "dwm"
+assert_contains "$build_line" "dmenu"
+assert_contains "$build_line" "st"
+assert_contains "$build_line" "slstatus"
+assert_eq "$(echo "$build_line" | grep -c 'doomfire')" "0"
+rm -rf "$t_home" "$t_state"
+
+# I2: build_suckless.sh now forwards ALL args unchanged (no more `--only
+# install`), so plain `-y --dry-run` through the wrapper must behave exactly
+# like calling manjaro-sl.sh directly: deprecation notice on stderr, exit 0,
+# and the same seeded default component set from C1 above.
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/build_suckless.sh" \
+  --dry-run -y 2>&1); rc=$?
+assert_eq "$rc" "0"
+assert_contains "$out" "build_suckless.sh is deprecated"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "dwm"
+assert_contains "$build_line" "dmenu"
+assert_contains "$build_line" "st"
+assert_contains "$build_line" "slstatus"
 rm -rf "$t_home" "$t_state"

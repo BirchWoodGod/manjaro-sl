@@ -88,8 +88,9 @@ flag can override:
   `manjaro-alsa`, `manjaro-gstreamer`, `manjaro-pipewire`, `mhwd*`,
   `pacman`, `pacman-mirrors`, `sudo`, `systemd`, `base`, `filesystem`,
   `linux*`, `networkmanager`) are refused even if a data file lists them.
-- **`pacman -Rns` only, never `-Rdd`** — dependency conflicts are shown and
-  that batch item is skipped rather than force-removed.
+- **`pacman -Rns` only, never `-Rdd`** — removal runs as a single batch, so
+  if pacman reports a dependency conflict the whole batch fails safely and
+  nothing in it is force-removed; resolve the conflict and re-run.
 - **The currently running display manager is never stopped**, only
   disabled — it keeps running until next reboot so you're never dropped to
   a black screen mid-session.

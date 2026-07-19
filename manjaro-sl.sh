@@ -107,6 +107,11 @@ declare -ga ONLY_SECTIONS=()
 SKIP_PACKAGES=0
 APPLY_NOW=0
 Y_FLAG=0
+# Set when -y/--accept-defaults is parsed (see apply_configuration's
+# COPY_XINIT/COPY_DESKTOP default — legacy build_suckless.sh -y defaulted
+# both to "no", but interactive TUI Preview & Apply should still default to
+# "yes"; LEGACY_Y distinguishes the two ACCEPT_DEFAULTS=1 callers).
+LEGACY_Y=0
 
 # Bare (non-dash) argv entries collected by parse_args, e.g. `./manjaro-sl.sh
 # st` — legacy per-component muscle memory from build_suckless.sh. See
@@ -215,7 +220,18 @@ dwm_menu() {
         cur=$(state_get dwm/wallpaper); [ "$cur" = off ] && cur=none
         sel=$(tui_radiolist "Wallpaper" "Choose dwm wallpaper animation" \
           none     "None"     "$([ "$cur" = none ] && echo on || echo off)" \
-          doomfire "DOOM fire" "$([ "$cur" = doomfire ] && echo on || echo off)") || continue
+          doomfire "DOOM fire" "$([ "$cur" = doomfire ] && echo on || echo off)" \
+          matrix   "matrix (phase 2 — coming soon)"   off \
+          colormix "colormix (phase 2 — coming soon)" off) || continue
+        # matrix/colormix are stubs (see readme.md); picking one shows a
+        # notice and falls back to whatever was selected before instead of
+        # silently storing an animation dwm can't actually render.
+        case "$sel" in
+          matrix|colormix)
+            tui_msgbox "Wallpaper" "'${sel}' is a phase-2 stub and not implemented yet — keeping '${cur}'."
+            sel="$cur"
+            ;;
+        esac
         state_set dwm/wallpaper "$sel"
         ;;
       battery)
@@ -394,7 +410,23 @@ preview_text() {
   local wp; wp=$(state_get dwm/wallpaper)
   [ "$wp" = "off" ] && wp="none"
   [ "$wp" = "none" ] && wp="(none)"
-  out+="WALLPAPER:\n  ${wp}"
+  out+="WALLPAPER:\n  ${wp}\n\n"
+
+  local ly_anim; ly_anim=$(state_get ly/animation); [ "$ly_anim" = "off" ] && ly_anim="none"
+  out+="LY:\n  enable=$(state_get ly/enable) animation=${ly_anim} match_wallpaper=$(state_get ly/match_wallpaper)\n\n"
+
+  # FILES reflects the same effective xinitrc/dwm.desktop copy defaults
+  # apply_configuration will use (I3: -y/LEGACY_Y defaults both to "no",
+  # interactive TUI apply defaults both to "yes"; explicit --copy-*/
+  # --no-copy-* flags already set COPY_XINIT/COPY_DESKTOP and always win).
+  local files_xinit="${COPY_XINIT:-}" files_desktop="${COPY_DESKTOP:-}"
+  if [ -z "$files_xinit" ]; then
+    files_xinit=$([ "${LEGACY_Y:-0}" -eq 1 ] && echo no || echo yes)
+  fi
+  if [ -z "$files_desktop" ]; then
+    files_desktop=$([ "${LEGACY_Y:-0}" -eq 1 ] && echo no || echo yes)
+  fi
+  out+="FILES:\n  xinitrc=${files_xinit} dwm.desktop=${files_desktop}"
 
   printf '%b' "$out"
 }
@@ -450,8 +482,18 @@ apply_configuration() {
   SLSTATUS_INTERFACE=$(state_get dwm/interface); [ "$SLSTATUS_INTERFACE" = off ] && SLSTATUS_INTERFACE=""
   BATTERY_CHOICE=""
   state_on dwm/battery && BATTERY_CHOICE="enable"
-  COPY_XINIT=${COPY_XINIT:-yes}
-  COPY_DESKTOP=${COPY_DESKTOP:-yes}
+  # Legacy parity: `-y` (LEGACY_Y) is old build_suckless.sh -y, which
+  # defaulted both copies to "no" (see setup_misc_files' own ACCEPT_DEFAULTS
+  # branch); interactive TUI Preview & Apply runs default to "yes" as
+  # before. Explicit --copy-*/--no-copy-* flags (COPY_XINIT/COPY_DESKTOP
+  # already set by parse_args) always win over either default.
+  if [ "$LEGACY_Y" -eq 1 ]; then
+    COPY_XINIT=${COPY_XINIT:-no}
+    COPY_DESKTOP=${COPY_DESKTOP:-no}
+  else
+    COPY_XINIT=${COPY_XINIT:-yes}
+    COPY_DESKTOP=${COPY_DESKTOP:-yes}
+  fi
   ACCEPT_DEFAULTS=1
 
   if state_on "component/slstatus"; then
@@ -646,6 +688,7 @@ parse_args() {
         ;;
       -y|--accept-defaults)
         Y_FLAG=1
+        LEGACY_Y=1
         TUI_ACTIVE=0
         ;;
       --skip-packages)
@@ -713,11 +756,25 @@ parse_args() {
   fi
 }
 
+# seed_default_components — if selections carry no component/* key at all
+# (bare/legacy runs with no --preset and no positional component names),
+# seed the legacy DEFAULT_COMPONENTS set (dwm dmenu st slstatus — NOT
+# doomfire, matching old build_suckless.sh) so "Build components" isn't
+# silently left empty. Presets and positional component args both set
+# component/* keys themselves, so this is a no-op whenever either was used;
+# called once selections are finalized, before dispatching to the TUI or
+# apply_all.
+seed_default_components() {
+  local key
+  for key in "${!SELECTIONS[@]}"; do
+    [[ "$key" == component/* ]] && return 0
+  done
+  local c
+  for c in dwm dmenu st slstatus; do state_set "component/$c" on; done
+}
+
 main() {
-  if [ "$#" -eq 0 ]; then
-    sanity_checks
-    main_menu
-  else
+  if [ "$#" -gt 0 ]; then
     parse_args "$@"
     # -y is old build_suckless.sh shorthand for "run non-interactively with
     # current settings"; keep that parity by having it imply --apply unless
@@ -725,14 +782,15 @@ main() {
     if [ "$Y_FLAG" -eq 1 ] && [ "$APPLY_NOW" -eq 0 ]; then
       APPLY_NOW=1
     fi
-    if [ "$APPLY_NOW" -eq 1 ]; then
-      TUI_ACTIVE=0
-      sanity_checks
-      apply_all
-    else
-      sanity_checks
-      main_menu
-    fi
+  fi
+  seed_default_components
+  if [ "$APPLY_NOW" -eq 1 ]; then
+    TUI_ACTIVE=0
+    sanity_checks
+    apply_all
+  else
+    sanity_checks
+    main_menu
   fi
 }
 

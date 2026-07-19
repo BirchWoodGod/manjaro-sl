@@ -220,22 +220,43 @@ configure_ly_display_manager() {
     ly_unit="ly@tty${ly_tty:-2}.service"
   fi
 
-  # Enable Ly service
-  echo "Enabling Ly service (${ly_unit})..."
-  if run_with_privilege systemctl enable "$ly_unit"; then
-    echo "Ly service enabled successfully."
-  else
-    echo "Warning: Failed to enable Ly service, but continuing..."
+  # I-C2: when selection state is available (state.sh sourced — always true
+  # from manjaro-sl.sh, never true from the legacy build_suckless.sh path)
+  # and ly/enable was EXPLICITLY set to "off" (e.g. via ly_menu's checklist),
+  # skip enabling/starting Ly entirely — it's write-only otherwise: a user
+  # who unchecks "Enable Ly on boot" still got it enabled and started. Unset
+  # (state function absent, or key never set) keeps today's behavior: enable
+  # + start as before. state_get itself can't distinguish "unset" from
+  # "explicitly off" (both fall back to "off"), so the SELECTIONS array is
+  # checked directly here rather than via state_get. The animation-write
+  # path below is unaffected either way, so a chosen animation still lands
+  # in /etc/ly/config.ini.
+  local ly_enable_off=0
+  if declare -F state_get >/dev/null 2>&1 \
+    && [ -n "${SELECTIONS[ly/enable]+x}" ] && [ "${SELECTIONS[ly/enable]}" = "off" ]; then
+    ly_enable_off=1
   fi
 
-  # Two enabled display managers race for the seat on boot, which is the
-  # classic black-screen scenario, so disable any others that are enabled.
-  for dm in "${KNOWN_DISPLAY_MANAGERS[@]}"; do
-    if systemctl is-enabled "${dm}.service" >/dev/null 2>&1; then
-      echo "Disabling ${dm} so it does not conflict with Ly on next boot..."
-      run_with_privilege systemctl disable "${dm}.service" || true
+  if [ "$ly_enable_off" -eq 1 ]; then
+    echo "Note: ly/enable is off — skipping Ly service enable/start (animation settings, if any, are still applied below)."
+  else
+    # Enable Ly service
+    echo "Enabling Ly service (${ly_unit})..."
+    if run_with_privilege systemctl enable "$ly_unit"; then
+      echo "Ly service enabled successfully."
+    else
+      echo "Warning: Failed to enable Ly service, but continuing..."
     fi
-  done
+
+    # Two enabled display managers race for the seat on boot, which is the
+    # classic black-screen scenario, so disable any others that are enabled.
+    for dm in "${KNOWN_DISPLAY_MANAGERS[@]}"; do
+      if systemctl is-enabled "${dm}.service" >/dev/null 2>&1; then
+        echo "Disabling ${dm} so it does not conflict with Ly on next boot..."
+        run_with_privilege systemctl disable "${dm}.service" || true
+      fi
+    done
+  fi
 
   # Configure Ly animation
   if run_with_privilege test -f "$ly_config"; then
@@ -312,7 +333,9 @@ configure_ly_display_manager() {
   # Starting Ly from inside a running desktop can steal the VT and leave the
   # current session on a black screen, so only start it when no graphical
   # session is active.
-  if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  if [ "$ly_enable_off" -eq 1 ]; then
+    : # already noted above; ly/enable=off means don't start Ly either
+  elif [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
     echo "Graphical session detected; not starting Ly now."
     echo "Ly is enabled and will take over after a reboot."
   else
