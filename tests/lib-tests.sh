@@ -467,6 +467,38 @@ assert_contains "$out" "modkey="
 assert_contains "$out" "barcolor=#"
 assert_contains "$out" "wallpaper=none"
 
+# reconfigure_read_slstatus parses interface + battery-enabled state out of a
+# slstatus config.h-shaped fixture. Isolated from reconfigure_load / the
+# repo's real slstatus/config.h so this is deterministic. Fixture 1: an
+# active (uncommented) battery_perc line -> battery=on.
+out=$(bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  f=$(mktemp)
+  printf "\t{ netspeed_rx,     \" %%s\",                \"wlan0\"   },\n\t{ battery_perc, \"[Bat %%s%%%%] \", \"BAT0\" },\n" > "$f"
+  reconfigure_read_slstatus "$f"
+  echo "interface=$(state_get dwm/interface)"
+  echo "battery=$(state_get dwm/battery)"
+  rm -f "$f"
+')
+assert_contains "$out" "interface=wlan0"
+assert_contains "$out" "battery=on"
+
+# Fixture 2: a commented-out (//{) battery_perc line -> battery=off, and a
+# different interface value to confirm it is read fresh each call.
+out=$(bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  f=$(mktemp)
+  printf "\t{ netspeed_rx,     \" %%s\",                \"eth0\"   },\n\t//{ battery_perc, \"[Bat %%s%%%%] \", \"BAT0\" },\n" > "$f"
+  reconfigure_read_slstatus "$f"
+  echo "interface=$(state_get dwm/interface)"
+  echo "battery=$(state_get dwm/battery)"
+  rm -f "$f"
+')
+assert_contains "$out" "interface=eth0"
+assert_contains "$out" "battery=off"
+
 # apply_all step gating: --only restricts to matching steps (mocked so this
 # is deterministic and side-effect free regardless of DRY_RUN).
 out=$(TUI_ACTIVE=0 bash -c '

@@ -63,7 +63,7 @@ until you apply them):
 | Category | Recommended | Minimal |
 |---|---|---|
 | Recommended packages (feh, meson, fastfetch, htop, nano, NetworkManager, tldr, brightnessctl, alsa-utils, firefox, net-tools...) | all checked | all unchecked |
-| Manjaro-branded debloat | checked, except `pamac*` and cosmetic packages (wallpapers, icons, grub theme) | all checked |
+| Manjaro-branded debloat | checked, except `pamac*` and cosmetic packages (wallpapers, icons, grub theme) | all checked (except `manjaro-zsh-config`) |
 | Preinstalled apps debloat | unchecked | checked (except `timeshift*`) |
 | Printing stack debloat | unchecked | unchecked |
 | Bluetooth stack debloat | unchecked | unchecked |

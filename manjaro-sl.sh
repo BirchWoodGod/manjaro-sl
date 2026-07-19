@@ -271,11 +271,32 @@ ly_menu() {
   done
 }
 
+# reconfigure_read_slstatus CFG_FILE — reads a slstatus config.h(-shaped)
+# file and state_sets dwm/interface and dwm/battery to match. Factored out
+# of reconfigure_load so it can be unit-tested against fixture files
+# directly. Guarded: a missing file is a no-op.
+reconfigure_read_slstatus() {
+  local cfg="$1"
+  [ -f "$cfg" ] || return 0
+
+  local iface
+  iface=$(sed -n 's/.*netspeed_rx.*"\([^"]*\)".*/\1/p' "$cfg" | head -n1)
+  [ -n "$iface" ] && state_set dwm/interface "$iface"
+
+  # Mirrors configure_slstatus_battery's toggle: the battery_perc widget
+  # entry is commented out (leading "//") when disabled, bare when enabled.
+  if grep -Eq '^[[:space:]]*\{[[:space:]]*battery_perc' "$cfg"; then
+    state_set dwm/battery on
+  elif grep -Eq '^[[:space:]]*//[[:space:]]*\{[[:space:]]*battery_perc' "$cfg"; then
+    state_set dwm/battery off
+  fi
+}
+
 # reconfigure_load pre-fills SELECTIONS from the live system: a saved
 # profile first (if any), then values read straight from the installed
-# dwm config / Ly config / xinitrc override it. Every file read is guarded
-# so a fresh install (no config.h, no /etc/ly, no ~/.xinitrc) is a no-op
-# rather than an error.
+# dwm config / slstatus config / Ly config / xinitrc override it. Every
+# file read is guarded so a fresh install (no config.h, no /etc/ly, no
+# ~/.xinitrc) is a no-op rather than an error.
 reconfigure_load() {
   profile_load "$HOME/.config/manjaro-sl/profile" 2>/dev/null || true
 
@@ -291,6 +312,10 @@ reconfigure_load() {
     bar_current=$(sed -n 's/.*col_accent\[\].*= "\([^"]*\)";.*/\1/p' "$cfg" | head -n1)
     [ -n "$bar_current" ] && state_set dwm/barcolor "$bar_current"
   fi
+
+  local slcfg="$REPO_ROOT/slstatus/config.h"
+  [ -f "$slcfg" ] || slcfg="$REPO_ROOT/slstatus/config.def.h"
+  reconfigure_read_slstatus "$slcfg"
 
   if [ -f /etc/ly/config.ini ]; then
     local a
