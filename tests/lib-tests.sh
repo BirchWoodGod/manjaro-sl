@@ -122,3 +122,29 @@ DRY_RUN=1
 out=$(tweaks_apply)
 assert_contains "$out" "+ sudo systemctl enable fstrim.timer"
 assert_contains "$out" "+ sudo systemctl disable cups.service"
+
+source "$REPO_ROOT/lib/wallpaper.sh"
+declare -gA SELECTIONS=()
+DRY_RUN=0
+OLD_HOME=$HOME
+export HOME=$(mktemp -d); mkdir -p "$HOME"
+
+state_set dwm/wallpaper doomfire
+wallpaper_apply
+assert_ok test -x "$HOME/.config/manjaro-sl/wallpaper.sh"
+assert_contains "$(cat "$HOME/.xinitrc")" "# >>> manjaro-sl wallpaper >>>"
+assert_contains "$(cat "$HOME/.config/manjaro-sl/wallpaper.sh")" "doomfire"
+
+# idempotent: applying twice leaves exactly one block
+wallpaper_apply
+assert_eq "$(grep -c 'manjaro-sl wallpaper >>>' "$HOME/.xinitrc")" "1"
+
+# none removes the block
+state_set dwm/wallpaper none
+wallpaper_apply
+assert_eq "$(grep -c 'manjaro-sl wallpaper' "$HOME/.xinitrc" || true)" "0"
+
+assert_eq "$(ly_animation_to_wallpaper doom)" "doomfire"
+assert_eq "$(ly_animation_to_wallpaper matrix)" "none"
+
+HOME=$OLD_HOME

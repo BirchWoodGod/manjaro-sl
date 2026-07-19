@@ -229,6 +229,21 @@ configure_ly_display_manager() {
         esac
       done
 
+      # Sync dwm's wallpaper animation to the chosen Ly animation when the
+      # user opted in. state.sh/wallpaper.sh aren't sourced on the legacy
+      # build_suckless.sh path, so these calls must stay no-ops there.
+      if declare -F state_on >/dev/null 2>&1 && declare -F state_set >/dev/null 2>&1 \
+        && declare -F ly_animation_to_wallpaper >/dev/null 2>&1 \
+        && state_on ly/match_wallpaper; then
+        local mapped_wallpaper
+        mapped_wallpaper=$(ly_animation_to_wallpaper "$chosen_animation")
+        state_set dwm/wallpaper "$mapped_wallpaper"
+        if [ "$mapped_wallpaper" = "none" ] && [ "$chosen_animation" != "none" ] \
+          && declare -F tui_msgbox >/dev/null 2>&1; then
+          tui_msgbox "Wallpaper" "The '${chosen_animation}' Ly animation does not have a matching dwm wallpaper yet — that arrives in phase 2. Falling back to no wallpaper animation for dwm."
+        fi
+      fi
+
       # Back up the config before making changes
       local timestamp
       timestamp=$(date +%Y%m%d%H%M%S)
