@@ -15,7 +15,7 @@ done
 
 usage() {
   cat <<'EOF'
-Usage: ./manjaro-sl.sh [options]
+Usage: ./manjaro-sl.sh [options] [component...]
 
 With no options, launches the interactive whiptail TUI for debloating
 Manjaro and installing dwm/suckless tools (dwm, dmenu, st, slstatus,
@@ -27,7 +27,10 @@ non-interactively instead of opening the menu. Because flags apply in
 order, --preset NAME bulk-sets selections at the point it's parsed, so
 any --enable-*/--disable-* (or other) flags placed AFTER it on the command
 line override what the preset chose; flags placed before a --preset get
-overridden by it instead.
+overridden by it instead. Bare component names (dwm, dmenu, st, slstatus,
+doomfire — legacy build_suckless.sh muscle memory, e.g. `./manjaro-sl.sh
+st`) are applied last, after any --preset, and select only the named
+component(s) for building, overriding whatever components the preset chose.
 
 Options:
   -h, --help                Show this help message and exit
@@ -104,6 +107,11 @@ declare -ga ONLY_SECTIONS=()
 SKIP_PACKAGES=0
 APPLY_NOW=0
 Y_FLAG=0
+
+# Bare (non-dash) argv entries collected by parse_args, e.g. `./manjaro-sl.sh
+# st` — legacy per-component muscle memory from build_suckless.sh. See
+# parse_args' handling below.
+declare -ga POSITIONAL_COMPONENTS=()
 
 # section_enabled SECTION — true if --only wasn't used at all, or SECTION is
 # one of the values it was given. Sections: install|debloat|tweaks|dwm|ly.
@@ -454,7 +462,15 @@ sync_ly_wallpaper() {
 dry_run_note() { echo "[dry-run] skipping ${1} (writes files/services directly, not wired through run_mut)"; }
 
 build_selected_components_maybe() {
-  [ "$DRY_RUN" -eq 1 ] && { dry_run_note "Build components"; return 0; }
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local -a comps=()
+    local key
+    for key in "${!SELECTIONS[@]}"; do
+      [[ "$key" == component/* ]] && [ "${SELECTIONS[$key]}" = on ] && comps+=("${key#component/}")
+    done
+    dry_run_note "Build components (selected: ${comps[*]:-none})"
+    return 0
+  fi
   build_selected_components
 }
 
@@ -637,13 +653,39 @@ parse_args() {
         fi
         [ "$found" -eq 0 ] && { echo "Unknown flag: $1" >&2; exit 1; }
         ;;
-      *)
+      -*)
         echo "Unknown option: $1" >&2
         exit 1
+        ;;
+      *)
+        # Legacy positional component name (build_suckless.sh muscle memory,
+        # e.g. `./manjaro-sl.sh st`). Validated and applied once the whole
+        # argv has been consumed — see below.
+        POSITIONAL_COMPONENTS+=("$1")
         ;;
     esac
     shift
   done
+
+  # Positional component names, if any, are validated and applied last —
+  # after any --preset on the command line has bulk-set its own component
+  # selection — so `./manjaro-sl.sh --preset minimal st` builds only st,
+  # consistent with the left-to-right-then-positionals rule documented in
+  # usage(): later selections win.
+  if [ ${#POSITIONAL_COMPONENTS[@]} -gt 0 ]; then
+    local -a valid_comps=(dwm dmenu st slstatus doomfire)
+    local pc c ok
+    for pc in "${POSITIONAL_COMPONENTS[@]}"; do
+      ok=0
+      for c in "${valid_comps[@]}"; do [ "$c" = "$pc" ] && { ok=1; break; }; done
+      if [ "$ok" -eq 0 ]; then
+        echo "Unknown component: $pc (valid: dwm dmenu st slstatus doomfire)" >&2
+        exit 1
+      fi
+    done
+    for c in "${valid_comps[@]}"; do state_set "component/$c" off; done
+    for pc in "${POSITIONAL_COMPONENTS[@]}"; do state_set "component/$pc" on; done
+  fi
 }
 
 main() {

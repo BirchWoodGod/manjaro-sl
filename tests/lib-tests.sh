@@ -547,3 +547,48 @@ out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
 rns_line=$(echo "$out" | grep 'Rns' || true)
 assert_eq "$(echo "$rns_line" | grep -c manjaro-hello)" "0"
 rm -rf "$t_home" "$t_state"
+
+# --- Task 11: legacy positional component args (`./manjaro-sl.sh st`,
+# `./build_suckless.sh st`) must select just that component instead of
+# hitting parse_args' unknown-option error path.
+
+# 1. Legacy per-component invocation via the build_suckless.sh wrapper
+# (`--only install st`): must succeed, still print the deprecation notice,
+# and the dry-run Build-components note must name only st, never dwm.
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/build_suckless.sh" \
+  st --dry-run --apply 2>&1); rc=$?
+assert_eq "$rc" "0"
+assert_contains "$out" "build_suckless.sh is deprecated"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "selected: st"
+assert_eq "$(echo "$build_line" | grep -c 'dwm')" "0"
+rm -rf "$t_home" "$t_state"
+
+# 2. Same, called directly on manjaro-sl.sh with --skip-packages (isolates
+# the Build-components note from the Install-packages step).
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  st --dry-run --apply --skip-packages 2>&1); rc=$?
+assert_eq "$rc" "0"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "selected: st"
+assert_eq "$(echo "$build_line" | grep -c 'dwm')" "0"
+rm -rf "$t_home" "$t_state"
+
+# 3. Unknown positional component name must error out clearly.
+out=$(HOME=$(mktemp -d) "$REPO_ROOT/manjaro-sl.sh" notacomponent --dry-run --apply 2>&1); rc=$?
+assert_eq "$rc" "1"
+assert_contains "$out" "Unknown component"
+
+# 4. Positional component names are applied after --preset, so they
+# override the preset's own component selection (consistent with the
+# documented left-to-right-then-positionals rule).
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --preset minimal st --dry-run --apply --skip-packages 2>&1); rc=$?
+assert_eq "$rc" "0"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "selected: st"
+assert_eq "$(echo "$build_line" | grep -c 'dwm')" "0"
+rm -rf "$t_home" "$t_state"
