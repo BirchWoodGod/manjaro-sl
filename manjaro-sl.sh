@@ -686,8 +686,8 @@ parse_args() {
       --wallpaper)
         [ $# -ge 2 ] || { echo "Error: --wallpaper requires a value." >&2; exit 1; }
         case "$2" in
-          none|doomfire) state_set dwm/wallpaper "$2" ;;
-          *) echo "Error: --wallpaper must be 'none' or 'doomfire'." >&2; exit 1 ;;
+          none|doomfire|xmatrix) state_set dwm/wallpaper "$2" ;;
+          *) echo "Error: --wallpaper must be 'none', 'doomfire', or 'xmatrix'." >&2; exit 1 ;;
         esac
         shift
         ;;

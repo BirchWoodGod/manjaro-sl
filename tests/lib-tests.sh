@@ -237,6 +237,18 @@ assert_eq "$(grep -c 'manjaro-sl wallpaper >>>' "$HOME/.xinitrc")" "1"
 
 HOME=$OLD_HOME
 
+# --wallpaper flag accepts xmatrix (usage() advertises it) and still
+# rejects unknown values
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --wallpaper xmatrix --dry-run --apply --skip-packages 2>&1); rc=$?
+assert_eq "$rc" "0"
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --wallpaper spinningcube --dry-run --apply 2>&1); rc=$?
+assert_eq "$rc" "1"
+assert_contains "$out" "--wallpaper must be"
+rm -rf "$t_home" "$t_state"
+
 # manjaro-sl.sh: preview_text renders grouped SELECTIONS. Sourced in a
 # subshell (bash -c) since manjaro-sl.sh sets `set -euo pipefail` at its own
 # top, which must not leak into this (non -e) test runner's shell.
