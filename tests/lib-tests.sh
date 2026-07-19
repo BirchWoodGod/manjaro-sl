@@ -278,3 +278,272 @@ out=$(configure_ly_display_manager 2>&1)
 assert_eq "$(echo "$out" | grep -c 'Updating animation to')" "0"
 
 unset -f pacman systemctl run_with_privilege require_command
+
+# --- Task 10: CLI flags, non-interactive mode, reconfigure mode ---------
+
+source "$REPO_ROOT/lib/packages.sh"
+
+# ensure_recommended_packages must route its mutating pacman call through
+# run_mut (dry-run aware) rather than run_with_privilege directly, so
+# `--dry-run` never actually installs anything. run_mut is already defined
+# (lib/exec.sh was sourced at the top of this file), matching how
+# manjaro-sl.sh sources it before lib/packages.sh.
+pacman() {
+  case "$1" in
+    -Sg) return 1 ;;
+    -Qi) [ "$2" = "already-here" ] ;;
+  esac
+}
+ACCEPT_DEFAULTS=1
+CHECK_PACKAGES=1
+RECOMMENDED_PACKAGES=(totally-missing-pkg)
+BUILD_PACKAGES=(already-here)
+DRY_RUN=1
+out=$(ensure_recommended_packages 2>&1)
+assert_contains "$out" "+ sudo pacman -Syu --needed --noconfirm totally-missing-pkg"
+DRY_RUN=0
+unset -f pacman
+
+# parse_args: legacy flags map onto dwm/* SELECTIONS + globals; --enable-*/
+# --disable-* toggle debloat/install entries by slug; --only is repeatable
+# and section_enabled reflects it; --dry-run sets DRY_RUN.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  parse_args --interface eth0 --battery --bar-color "#112233" --modkey super \
+    --wallpaper doomfire --skip-packages --copy-xinit --no-copy-desktop \
+    --enable-bluez --disable-feh --only debloat --only ly --dry-run
+  echo "interface=$(state_get dwm/interface)"
+  echo "battery=$(state_get dwm/battery)"
+  echo "barcolor=$(state_get dwm/barcolor)"
+  echo "modkey=$(state_get dwm/modkey)"
+  echo "wallpaper=$(state_get dwm/wallpaper)"
+  echo "skip=$SKIP_PACKAGES"
+  echo "copyxinit=$COPY_XINIT"
+  echo "copydesktop=$COPY_DESKTOP"
+  echo "bluez=$(state_get debloat/bluez)"
+  echo "feh=$(state_get install/feh)"
+  echo "dryrun=$DRY_RUN"
+  section_enabled debloat && echo "debloat_section=yes"
+  section_enabled ly && echo "ly_section=yes"
+  section_enabled install || echo "install_section=no"
+')
+assert_contains "$out" "interface=eth0"
+assert_contains "$out" "battery=on"
+assert_contains "$out" 'barcolor=#112233'
+assert_contains "$out" "modkey=super"
+assert_contains "$out" "wallpaper=doomfire"
+assert_contains "$out" "skip=1"
+assert_contains "$out" "copyxinit=yes"
+assert_contains "$out" "copydesktop=no"
+assert_contains "$out" "bluez=on"
+assert_contains "$out" "feh=off"
+assert_contains "$out" "dryrun=1"
+assert_contains "$out" "debloat_section=yes"
+assert_contains "$out" "ly_section=yes"
+assert_contains "$out" "install_section=no"
+
+# --no-battery / --no-remove-de / --no-copy-xinit / --copy-desktop and the
+# --no-remove-de note
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  parse_args --no-battery --no-remove-de --no-copy-xinit --copy-desktop
+  echo "battery=$(state_get dwm/battery)"
+  echo "copyxinit=$COPY_XINIT"
+  echo "copydesktop=$COPY_DESKTOP"
+' 2>&1)
+assert_contains "$out" "battery=off"
+assert_contains "$out" "copyxinit=no"
+assert_contains "$out" "copydesktop=yes"
+assert_contains "$out" "Note: --no-remove-de is the default"
+
+# --remove-de reuses debloat_installed_from to mark only installed old
+# DEs/DMs (guarded pattern from preset_apply minimal); mock pacman to say
+# only sddm is installed.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  pacman() { [ "$1" = "-Qq" ] && [ "$2" = "sddm" ]; }
+  parse_args --remove-de
+  state_get debloat/sddm
+')
+assert_eq "$out" "on"
+
+# --preset applies preset_apply immediately when parsed; flags AFTER it
+# override what the preset chose (later wins, strict left-to-right).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  parse_args --preset minimal --disable-manjaro-hello
+  state_get debloat/manjaro-hello
+')
+assert_eq "$out" "off"
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  parse_args --disable-manjaro-hello --preset minimal
+  state_get debloat/manjaro-hello
+')
+assert_eq "$out" "on"
+
+# Unknown/invalid flags exit 1 with an error (subprocess: exercises the
+# real -h-before-common.sh sourcing order + full parse_args error paths).
+out=$("$REPO_ROOT/manjaro-sl.sh" --bogus-flag 2>&1); rc=$?
+assert_eq "$rc" "1"; assert_contains "$out" "Unknown option: --bogus-flag"
+
+out=$("$REPO_ROOT/manjaro-sl.sh" --preset bogus 2>&1); rc=$?
+assert_eq "$rc" "1"; assert_contains "$out" "Error: --preset must be"
+
+out=$("$REPO_ROOT/manjaro-sl.sh" --profile /no/such/file 2>&1); rc=$?
+assert_eq "$rc" "1"; assert_contains "$out" "profile file not found"
+
+out=$("$REPO_ROOT/manjaro-sl.sh" --enable-not-a-real-package 2>&1); rc=$?
+assert_eq "$rc" "1"; assert_contains "$out" "Unknown flag: --enable-not-a-real-package"
+
+out=$("$REPO_ROOT/manjaro-sl.sh" --only bogus 2>&1); rc=$?
+assert_eq "$rc" "1"
+
+out=$("$REPO_ROOT/manjaro-sl.sh" --modkey bogus 2>&1); rc=$?
+assert_eq "$rc" "1"
+
+out=$("$REPO_ROOT/manjaro-sl.sh" --wallpaper bogus 2>&1); rc=$?
+assert_eq "$rc" "1"
+
+out=$("$REPO_ROOT/manjaro-sl.sh" --help 2>&1); rc=$?
+assert_eq "$rc" "0"; assert_contains "$out" "Usage:"
+
+# main() dispatch: --apply (or -y, which implies --apply unless already
+# given) skips the TUI and calls apply_all; plain flags without either
+# still fall through to the interactive main_menu.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  sanity_checks() { :; }
+  apply_all() { echo "apply_all called"; }
+  main_menu() { echo "main_menu called"; }
+  main -y
+')
+assert_contains "$out" "apply_all called"
+assert_eq "$(echo "$out" | grep -c "main_menu called")" "0"
+
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  sanity_checks() { :; }
+  apply_all() { echo "apply_all called"; }
+  main_menu() { echo "main_menu called"; }
+  main --preset minimal
+')
+assert_contains "$out" "main_menu called"
+assert_eq "$(echo "$out" | grep -c "apply_all called")" "0"
+
+# sanity_checks must not offer to install whiptail (no prompt, no stdin
+# read) when running non-interactively via --apply/-y; it should just fall
+# back to TUI_ACTIVE=0.
+out=$(TUI_ACTIVE=1 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  tui_available() { return 1; }
+  APPLY_NOW=1
+  sanity_checks
+  echo "TUI_ACTIVE=$TUI_ACTIVE"
+' 2>&1 </dev/null)
+assert_contains "$out" "TUI_ACTIVE=0"
+assert_eq "$(echo "$out" | grep -c 'Install libnewt')" "0"
+
+# reconfigure_load pre-fills SELECTIONS from the live system: dwm/config.h's
+# real MODKEY/col_accent (repo-relative, deterministic) and "no ~/.xinitrc
+# wallpaper block" -> wallpaper none (HOME sandboxed to an empty tmp dir).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  export HOME=$(mktemp -d)
+  reconfigure_load >/dev/null 2>&1
+  echo "modkey=$(state_get dwm/modkey)"
+  echo "barcolor=$(state_get dwm/barcolor)"
+  echo "wallpaper=$(state_get dwm/wallpaper)"
+')
+assert_contains "$out" "modkey="
+assert_contains "$out" "barcolor=#"
+assert_contains "$out" "wallpaper=none"
+
+# apply_all step gating: --only restricts to matching steps (mocked so this
+# is deterministic and side-effect free regardless of DRY_RUN).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  debloat_apply() { echo "debloat ran"; }
+  tweaks_apply() { echo "tweaks ran"; }
+  install_selected_packages() { echo "install ran"; }
+  build_selected_components_maybe() { echo "build ran"; }
+  apply_configuration_maybe() { echo "configure ran"; }
+  configure_ly_display_manager_maybe() { echo "ly ran"; }
+  wallpaper_apply_maybe() { echo "wallpaper ran"; }
+  profile_save() { :; }
+  tui_msgbox() { :; }
+  ONLY_SECTIONS=(dwm)
+  export HOME=$(mktemp -d)
+  export XDG_STATE_HOME=$(mktemp -d)
+  apply_all
+')
+assert_contains "$out" "==> Configure"
+assert_contains "$out" "==> Wallpaper"
+assert_eq "$(echo "$out" | grep -c '==> Debloat')" "0"
+assert_eq "$(echo "$out" | grep -c '==> Install packages')" "0"
+assert_eq "$(echo "$out" | grep -c '==> Build components')" "0"
+assert_eq "$(echo "$out" | grep -c '==> Ly')" "0"
+
+# --skip-packages skips only the "Install packages" step, not "Build
+# components" (which is also gated by the "install" section).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  debloat_apply() { echo "debloat ran"; }
+  tweaks_apply() { echo "tweaks ran"; }
+  install_selected_packages() { echo "install ran"; }
+  build_selected_components_maybe() { echo "build ran"; }
+  apply_configuration_maybe() { echo "configure ran"; }
+  configure_ly_display_manager_maybe() { echo "ly ran"; }
+  wallpaper_apply_maybe() { echo "wallpaper ran"; }
+  profile_save() { :; }
+  tui_msgbox() { :; }
+  SKIP_PACKAGES=1
+  export HOME=$(mktemp -d)
+  export XDG_STATE_HOME=$(mktemp -d)
+  apply_all
+')
+assert_eq "$(echo "$out" | grep -c '==> Install packages')" "0"
+assert_contains "$out" "==> Build components"
+assert_contains "$out" "==> Debloat"
+
+# --- Task 10 Step 3 acceptance gate: non-interactive dry-run smoke tests,
+# run as real subprocesses of ./manjaro-sl.sh with HOME/XDG_STATE_HOME
+# sandboxed to temp dirs (apply_all writes a run log + saved profile there;
+# everything mutating goes through run_mut/the DRY_RUN-gated adapters, so
+# no real system change happens either way). No sudo prompt, no whiptail.
+
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --preset minimal --dry-run --apply 2>&1); rc=$?
+assert_eq "$rc" "0"
+rns_line=$(echo "$out" | grep 'pacman -Rns' || true)
+assert_contains "$rns_line" "+ sudo pacman -Rns"
+assert_contains "$rns_line" "manjaro-hello"
+assert_contains "$out" "+ sudo systemctl enable NetworkManager.service"
+assert_ok bash -c 'pacman -Qi manjaro-hello >/dev/null'
+rm -rf "$t_home" "$t_state"
+
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --preset recommended --dry-run --apply 2>&1)
+assert_eq "$(echo "$out" | grep -c pamac)" "0"
+rm -rf "$t_home" "$t_state"
+
+# Flag order: --disable-manjaro-hello placed AFTER --preset overrides it
+# (see the strict left-to-right ordering established above).
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --preset minimal --disable-manjaro-hello --dry-run --apply 2>&1)
+rns_line=$(echo "$out" | grep 'Rns' || true)
+assert_eq "$(echo "$rns_line" | grep -c manjaro-hello)" "0"
+rm -rf "$t_home" "$t_state"

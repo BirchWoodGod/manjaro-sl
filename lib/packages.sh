@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # Recommended/build package lists and pacman installation helpers.
 
+# Route mutating privileged commands through run_mut (dry-run aware) when
+# it's available (manjaro-sl.sh sources lib/exec.sh); build_suckless.sh
+# doesn't define DRY_RUN/run_mut at all, so fall back to run_with_privilege
+# directly there — preserves that entry point's existing behavior exactly.
+_priv() {
+  if declare -F run_mut >/dev/null 2>&1; then
+    run_mut sudo: "$@"
+  else
+    run_with_privilege "$@"
+  fi
+}
+
 RECOMMENDED_PACKAGES=(
   feh
   ly
@@ -55,7 +67,7 @@ ensure_multilib_repo_enabled() {
   require_command python3 "Python 3 is needed to update $pacman_conf."
 
   echo "Enabling pacman multilib repository in $pacman_conf."
-  if run_with_privilege python3 - "$pacman_conf" <<'PY'
+  if _priv python3 - "$pacman_conf" <<'PY'
 import sys
 
 path = sys.argv[1]
@@ -170,7 +182,7 @@ ensure_recommended_packages() {
     fi
     pacman_cmd+=("${missing_packages[@]}")
     echo "Installing recommended packages: ${missing_packages[*]}"
-    run_with_privilege "${pacman_cmd[@]}"
+    _priv "${pacman_cmd[@]}"
     echo "Recommended packages installation complete."
   else
     echo "Skipping installation of recommended packages."

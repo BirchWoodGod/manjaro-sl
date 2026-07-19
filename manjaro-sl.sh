@@ -17,15 +17,44 @@ usage() {
   cat <<'EOF'
 Usage: ./manjaro-sl.sh [options]
 
-Interactive whiptail TUI for debloating Manjaro and installing dwm/suckless
-tools (dwm, dmenu, st, slstatus, doomfire) with a Ly display manager.
+With no options, launches the interactive whiptail TUI for debloating
+Manjaro and installing dwm/suckless tools (dwm, dmenu, st, slstatus,
+doomfire) with a Ly display manager.
+
+With any options, flags are processed left-to-right and build up the same
+selection state the TUI edits; pass --apply (or -y) to apply it
+non-interactively instead of opening the menu. Because flags apply in
+order, `--preset NAME` bulk-sets selections at the point it's parsed, so
+any --enable-*/--disable-* (or other) flags placed AFTER it on the command
+line override what the preset chose; flags placed before a --preset get
+overridden by it instead.
 
 Options:
-  -h, --help    Show this help message and exit
-
-Full non-interactive flag parsing (--preset, --only, --dry-run, --profile,
---enable-<slug>/--disable-<slug>, ...) arrives in a later step; for now any
-other arguments are accepted and fall back to non-interactive scaffold mode.
+  -h, --help              Show this help message and exit
+  -y, --accept-defaults   Non-interactive; implies --apply unless it's
+                           already given
+      --apply             Skip the TUI and apply the selections built up by
+                           the flags so far
+      --dry-run           Print mutating commands instead of running them
+      --preset NAME        Bulk-apply a preset: 'recommended' or 'minimal'
+      --only SECTION       Restrict --apply to one section (repeatable):
+                           install|debloat|tweaks|dwm|ly
+      --profile FILE       Load previously saved selections from FILE
+      --wallpaper WP       Set dwm wallpaper animation: 'none' or 'doomfire'
+      --enable-SLUG         Turn on a debloat/install entry by package name
+      --disable-SLUG        Turn off a debloat/install entry by package name
+      --interface IFACE    Set slstatus network interface
+      --battery             Enable the slstatus battery widget
+      --no-battery           Disable the slstatus battery widget
+      --bar-color COLOR     Hex color for the dwm selected bar
+      --modkey KEY          dwm modkey: 'super' or 'alt'
+      --remove-de            Mark installed old DEs/DMs for removal
+      --no-remove-de         Leave old DEs/DMs alone (default)
+      --skip-packages        Skip the recommended/build package install step
+      --copy-xinit           Copy the xinitrc helper to ~/.xinitrc
+      --no-copy-xinit         Skip copying the xinitrc helper
+      --copy-desktop          Copy the dwm.desktop session entry
+      --no-copy-desktop       Skip copying the dwm.desktop session entry
 EOF
 }
 
@@ -60,13 +89,35 @@ REMOVE_OLD_DE=${REMOVE_OLD_DE:-}
 CHECK_PACKAGES=${CHECK_PACKAGES:-1}
 declare -ga COMPONENTS=()
 
+# CLI-flag-driven state (Task 10). ONLY_SECTIONS restricts apply_all to
+# matching steps (empty = all); SKIP_PACKAGES/APPLY_NOW/Y_FLAG are simple
+# switches set while parsing argv in parse_args (see below).
+declare -ga ONLY_SECTIONS=()
+SKIP_PACKAGES=0
+APPLY_NOW=0
+Y_FLAG=0
+
+# section_enabled SECTION — true if --only wasn't used at all, or SECTION is
+# one of the values it was given. Sections: install|debloat|tweaks|dwm|ly.
+section_enabled() {
+  local sect="$1" s
+  [ ${#ONLY_SECTIONS[@]} -eq 0 ] && return 0
+  for s in "${ONLY_SECTIONS[@]}"; do [ "$s" = "$sect" ] && return 0; done
+  return 1
+}
+
 sanity_checks() {
   command -v pacman >/dev/null || { echo "pacman not found — Arch-based distro required." >&2; exit 1; }
   if [ "${EUID:-$(id -u)}" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
     echo "Warning: run as your normal user; sudo is used only where needed." >&2
   fi
   if ! tui_available && [ "$TUI_ACTIVE" -eq 1 ]; then
-    if tui_yesno "whiptail missing" "Install libnewt (whiptail) for the menu UI?"; then
+    # Non-interactive runs (--apply/-y) must never block on a prompt; just
+    # fall back to the plain-text TUI shims instead of offering to install
+    # libnewt.
+    if [ "$APPLY_NOW" -eq 1 ]; then
+      TUI_ACTIVE=0
+    elif tui_yesno "whiptail missing" "Install libnewt (whiptail) for the menu UI?"; then
       run_mut sudo: pacman -S --needed --noconfirm libnewt
     else
       TUI_ACTIVE=0
@@ -204,11 +255,47 @@ ly_menu() {
   done
 }
 
-# reconfigure_load is Task 10's job (reads live system state into
-# SELECTIONS); stubbed here so the "Reconfigure" menu entry has somewhere
-# to go without erroring.
+# reconfigure_load pre-fills SELECTIONS from the live system: a saved
+# profile first (if any), then values read straight from the installed
+# dwm config / Ly config / xinitrc override it. Every file read is guarded
+# so a fresh install (no config.h, no /etc/ly, no ~/.xinitrc) is a no-op
+# rather than an error.
 reconfigure_load() {
-  tui_msgbox "Reconfigure" "Coming in the next step."
+  profile_load "$HOME/.config/manjaro-sl/profile" 2>/dev/null || true
+
+  local cfg="$REPO_ROOT/dwm/config.h"
+  [ -f "$cfg" ] || cfg="$REPO_ROOT/dwm/config.def.h"
+  if [ -f "$cfg" ]; then
+    if grep -q 'define MODKEY Mod4Mask' "$cfg"; then
+      state_set dwm/modkey super
+    else
+      state_set dwm/modkey alt
+    fi
+    local bar_current
+    bar_current=$(sed -n 's/.*col_accent\[\].*= "\([^"]*\)";.*/\1/p' "$cfg" | head -n1)
+    [ -n "$bar_current" ] && state_set dwm/barcolor "$bar_current"
+  fi
+
+  if [ -f /etc/ly/config.ini ]; then
+    local a
+    a=$(grep -E '^\s*animation\s*=' /etc/ly/config.ini 2>/dev/null | sed 's/.*=\s*//' | tr -d ' ' || true)
+    [ -n "$a" ] && state_set ly/animation "$a"
+    # Newer ly packages ship a per-tty ly@.service instead of ly.service;
+    # `systemctl is-enabled 'ly@*.service'` doesn't glob, so check the
+    # templated unit via list-unit-files instead.
+    if systemctl is-enabled ly.service >/dev/null 2>&1 \
+      || systemctl list-unit-files 'ly@*.service' --state=enabled --no-legend 2>/dev/null | grep -q .; then
+      state_set ly/enable on
+    fi
+  fi
+
+  if grep -q 'manjaro-sl wallpaper' "$HOME/.xinitrc" 2>/dev/null; then
+    state_set dwm/wallpaper doomfire
+  else
+    state_set dwm/wallpaper none
+  fi
+
+  tui_msgbox "Reconfigure" "Current settings loaded — visit any menu to change them, then Preview & Apply."
 }
 
 # Renders the current SELECTIONS grouped into the sections the design spec's
@@ -349,19 +436,56 @@ sync_ly_wallpaper() {
   fi
 }
 
+# Debloat/tweaks/install-packages route every mutating command through
+# run_mut, so --dry-run is safe there already. Build/Configure/Ly/Wallpaper
+# don't (they write dwm/slstatus config.h, ~/.xinitrc, /etc/ly/config.ini,
+# and toggle systemd units directly via run_with_privilege/python3/sudo) —
+# rewiring each call site is out of scope here, so under --dry-run these
+# _maybe wrappers skip the real step entirely and print a note instead,
+# guaranteeing `--dry-run --apply` never touches the real system.
+dry_run_note() { echo "[dry-run] skipping ${1} (writes files/services directly, not wired through run_mut)"; }
+
+build_selected_components_maybe() {
+  [ "$DRY_RUN" -eq 1 ] && { dry_run_note "Build components"; return 0; }
+  build_selected_components
+}
+
+apply_configuration_maybe() {
+  [ "$DRY_RUN" -eq 1 ] && { dry_run_note "Configure"; return 0; }
+  apply_configuration
+}
+
+configure_ly_display_manager_maybe() {
+  [ "$DRY_RUN" -eq 1 ] && { dry_run_note "Ly"; return 0; }
+  configure_ly_display_manager
+}
+
+wallpaper_apply_maybe() {
+  [ "$DRY_RUN" -eq 1 ] && { dry_run_note "Wallpaper"; return 0; }
+  wallpaper_apply
+}
+
 # Fixed order: debloat → tweaks → install → build → configure → ly →
 # wallpaper → summary, each via run_step so failures offer continue/abort.
+# Each step is additionally gated by section_enabled (see --only) and the
+# install step by SKIP_PACKAGES (see --skip-packages).
 apply_all() {
   ACCEPT_DEFAULTS=1
   sync_ly_wallpaper
-  run_step "Debloat"           debloat_apply
-  run_step "System tweaks"     tweaks_apply
-  run_step "Install packages"  install_selected_packages
-  run_step "Build components"  build_selected_components
-  run_step "Configure"         apply_configuration
-  run_step "Ly"                configure_ly_display_manager
-  run_step "Wallpaper"         wallpaper_apply
-  profile_save "$HOME/.config/manjaro-sl/profile"
+  section_enabled debloat && run_step "Debloat"           debloat_apply
+  section_enabled tweaks  && run_step "System tweaks"     tweaks_apply
+  if section_enabled install; then
+    [ "$SKIP_PACKAGES" -eq 0 ] && run_step "Install packages" install_selected_packages
+    run_step "Build components" build_selected_components_maybe
+  fi
+  section_enabled dwm && run_step "Configure" apply_configuration_maybe
+  section_enabled ly  && run_step "Ly"        configure_ly_display_manager_maybe
+  section_enabled dwm && run_step "Wallpaper" wallpaper_apply_maybe
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "[dry-run] skipping profile save"
+  else
+    profile_save "$HOME/.config/manjaro-sl/profile"
+  fi
   tui_msgbox "Done" "All steps finished. Log: ${RUN_LOG:-none}\nReboot to switch to Ly + dwm."
 }
 
@@ -386,15 +510,154 @@ main_menu() {
   done
 }
 
+# parse_args processes argv left-to-right, building up SELECTIONS/globals
+# exactly like the TUI screens do. Because it's strictly sequential,
+# `--preset` bulk-sets selections at the point it's parsed — any
+# --enable-*/--disable-* (or other selection-setting) flag placed AFTER it
+# on the command line overrides what the preset chose; flags placed before
+# a --preset get overridden by it instead. See usage().
+parse_args() {
+  while (($#)); do
+    case "$1" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      --preset)
+        [ $# -ge 2 ] || { echo "Error: --preset requires a value." >&2; exit 1; }
+        case "$2" in
+          recommended|minimal) preset_apply "$2" ;;
+          *) echo "Error: --preset must be 'recommended' or 'minimal'." >&2; exit 1 ;;
+        esac
+        shift
+        ;;
+      --only)
+        [ $# -ge 2 ] || { echo "Error: --only requires a value." >&2; exit 1; }
+        case "$2" in
+          install|debloat|tweaks|dwm|ly) ONLY_SECTIONS+=("$2") ;;
+          *) echo "Error: --only must be one of install|debloat|tweaks|dwm|ly." >&2; exit 1 ;;
+        esac
+        shift
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        ;;
+      --profile)
+        [ $# -ge 2 ] || { echo "Error: --profile requires a value." >&2; exit 1; }
+        profile_load "$2" || { echo "Error: profile file not found: $2" >&2; exit 1; }
+        shift
+        ;;
+      --apply)
+        APPLY_NOW=1
+        ;;
+      --wallpaper)
+        [ $# -ge 2 ] || { echo "Error: --wallpaper requires a value." >&2; exit 1; }
+        case "$2" in
+          none|doomfire) state_set dwm/wallpaper "$2" ;;
+          *) echo "Error: --wallpaper must be 'none' or 'doomfire'." >&2; exit 1 ;;
+        esac
+        shift
+        ;;
+      --interface)
+        [ $# -ge 2 ] || { echo "Error: --interface requires a value." >&2; exit 1; }
+        state_set dwm/interface "$2"
+        shift
+        ;;
+      --battery)
+        state_set dwm/battery on
+        ;;
+      --no-battery)
+        state_set dwm/battery off
+        ;;
+      --bar-color)
+        [ $# -ge 2 ] || { echo "Error: --bar-color requires a value." >&2; exit 1; }
+        state_set dwm/barcolor "$2"
+        shift
+        ;;
+      --modkey)
+        [ $# -ge 2 ] || { echo "Error: --modkey requires a value (super or alt)." >&2; exit 1; }
+        case "$2" in
+          super|alt) state_set dwm/modkey "$2" ;;
+          *) echo "Error: --modkey must be 'super' or 'alt'." >&2; exit 1 ;;
+        esac
+        shift
+        ;;
+      --remove-de)
+        # Reuses preset_apply minimal's guarded pattern: only mark old
+        # DEs/DMs actually installed, and stay a no-op without pacman.
+        if declare -F debloat_installed_from >/dev/null && command -v pacman >/dev/null 2>&1; then
+          local f
+          for f in "$REPO_ROOT/data/de.list" "$REPO_ROOT/data/dm.list"; do
+            while IFS='|' read -r name desc state; do state_set "debloat/$name" on; done < <(debloat_installed_from "$f")
+          done
+        fi
+        ;;
+      --no-remove-de)
+        echo "Note: --no-remove-de is the default; old DEs/DMs are left untouched unless --remove-de is passed."
+        ;;
+      -y|--accept-defaults)
+        Y_FLAG=1
+        TUI_ACTIVE=0
+        ;;
+      --skip-packages)
+        SKIP_PACKAGES=1
+        ;;
+      --copy-xinit)
+        COPY_XINIT=yes
+        ;;
+      --no-copy-xinit)
+        COPY_XINIT=no
+        ;;
+      --copy-desktop)
+        COPY_DESKTOP=yes
+        ;;
+      --no-copy-desktop)
+        COPY_DESKTOP=no
+        ;;
+      --enable-*|--disable-*)
+        local flag mode slug found=0 f
+        flag=${1#--}; mode=${flag%%-*}; slug=${flag#*-}
+        for f in "$REPO_ROOT"/data/debloat-*.list; do
+          if list_entries "$f" | cut -d'|' -f1 | grep -qx "$slug"; then
+            state_set "debloat/$slug" "$([ "$mode" = enable ] && echo on || echo off)"
+            found=1
+          fi
+        done
+        if list_entries "$REPO_ROOT/data/install-recommended.list" | cut -d'|' -f1 | grep -qx "$slug"; then
+          state_set "install/$slug" "$([ "$mode" = enable ] && echo on || echo off)"
+          found=1
+        fi
+        [ "$found" -eq 0 ] && { echo "Unknown flag: $1" >&2; exit 1; }
+        ;;
+      *)
+        echo "Unknown option: $1" >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+}
+
 main() {
   if [ "$#" -eq 0 ]; then
     sanity_checks
     main_menu
   else
-    # Full flag parsing arrives in Task 10; for now don't try to guess what
-    # unrecognized arguments mean, and don't launch the interactive menu
-    # when the caller passed arguments intended for a non-interactive run.
-    echo "manjaro-sl: scaffold (non-interactive flag parsing arrives in a later step)"
+    parse_args "$@"
+    # -y is old build_suckless.sh shorthand for "run non-interactively with
+    # current settings"; keep that parity by having it imply --apply unless
+    # --apply was already given explicitly.
+    if [ "$Y_FLAG" -eq 1 ] && [ "$APPLY_NOW" -eq 0 ]; then
+      APPLY_NOW=1
+    fi
+    if [ "$APPLY_NOW" -eq 1 ]; then
+      TUI_ACTIVE=0
+      sanity_checks
+      apply_all
+    else
+      sanity_checks
+      main_menu
+    fi
   fi
 }
 
