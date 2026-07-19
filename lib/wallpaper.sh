@@ -39,8 +39,12 @@ wallpaper_wire_xinitrc() {
   block=$(printf '%s\n%s\n%s' "$WP_BLOCK_START" \
     "\"\$HOME/.config/manjaro-sl/wallpaper.sh\" &" "$WP_BLOCK_END")
   if grep -q '^exec .*dwm' "$xi"; then
+    # The rewrite must keep the original mode: Ly executes ~/.xinitrc as a
+    # program, so losing the +x bit locks the user out of their session.
+    local mode; mode=$(stat -c '%a' "$xi")
     awk -v blk="$block" '!done && /^exec .*dwm/ { print blk; done=1 } { print }' \
       "$xi" > "$xi.tmp" && mv "$xi.tmp" "$xi"
+    chmod "$mode" "$xi"
   else
     [ -s "$xi" ] && [ -n "$(tail -c1 "$xi")" ] && printf '\n' >> "$xi"
     printf '%s\n' "$block" >> "$xi"

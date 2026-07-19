@@ -228,6 +228,15 @@ assert_contains "$(head -n1 "$HOME/.xinitrc")" "exec bash"
 assert_eq "$(ly_animation_to_wallpaper doom)" "doomfire"
 assert_eq "$(ly_animation_to_wallpaper matrix)" "none"
 
+# regression: the awk insert-before-exec-dwm path must preserve the execute
+# bit — Ly runs ~/.xinitrc as a program, so dropping +x locks the user out
+printf '#!/usr/bin/env bash\nexec dwm\n' > "$HOME/.xinitrc"
+chmod 755 "$HOME/.xinitrc"
+state_set dwm/wallpaper doomfire
+wallpaper_apply
+assert_ok test -x "$HOME/.xinitrc"
+assert_eq "$(grep -c 'manjaro-sl wallpaper >>>' "$HOME/.xinitrc")" "1"
+
 HOME=$OLD_HOME
 
 # manjaro-sl.sh: preview_text renders grouped SELECTIONS. Sourced in a
