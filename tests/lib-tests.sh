@@ -834,12 +834,17 @@ out=$(TUI_ACTIVE=0 bash -c '
   echo "anim=$(state_get ly/animation)"
   echo "wp=$(state_get dwm/wallpaper)"
   echo "match=$(state_get ly/match_wallpaper)"
+  echo "comp=$(state_get component/xmatrix)"
 ' <<< "1
 2
 ")
 assert_contains "$out" "anim=matrix"
 assert_contains "$out" "wp=xmatrix"
 assert_contains "$out" "match=on"
+# I1: picking a wallpaper here must also flip on its own component/* — see
+# select_wallpaper — or apply_all's Build step never builds it and the
+# launcher execs a binary that was never built (flagship final-review-v2 bug).
+assert_contains "$out" "comp=on"
 
 # 2) Custom animation: same top pick (1=Animation), radiolist pick "5"
 #    (custom = last tag), then the tui_input prompt reads the name verbatim.
@@ -871,6 +876,7 @@ out=$(TUI_ACTIVE=0 bash -c '
   echo "anim=$(state_get ly/animation)"
   echo "wp=$(state_get dwm/wallpaper)"
   echo "match=$(state_get ly/match_wallpaper)"
+  echo "comp=$(state_get component/doomfire)"
 ' <<< "2
 2
 2
@@ -878,6 +884,9 @@ out=$(TUI_ACTIVE=0 bash -c '
 assert_contains "$out" "anim=matrix"
 assert_contains "$out" "wp=doomfire"
 assert_contains "$out" "match=off"
+# I1: the Advanced desktop-wallpaper radiolist is also a select_wallpaper
+# chokepoint — same guarantee as the unified picker above.
+assert_contains "$out" "comp=on"
 
 # Menu integrity (static source assertions): task-oriented main menu items
 # present, legacy per-screen entrances and their tui_menu titles gone.
@@ -892,3 +901,105 @@ assert_eq "$(grep -c '"Ly Display Manager' "$REPO_ROOT/manjaro-sl.sh")" "0"
 assert_eq "$(grep -c '^install_screen()' "$REPO_ROOT/manjaro-sl.sh")" "0"
 assert_eq "$(grep -c '^dwm_menu()' "$REPO_ROOT/manjaro-sl.sh")" "0"
 assert_eq "$(grep -c '^ly_menu()' "$REPO_ROOT/manjaro-sl.sh")" "0"
+
+# --- Final review v2 fixes -------------------------------------------------
+
+# I1: selecting a wallpaper never selected its own component/* for building
+# (flagship bug) — a component that was never built/installed still got
+# exec'd by wallpaper.sh's launcher, silently, since the launcher runs
+# backgrounded from ~/.xinitrc. select_wallpaper is the fix's single
+# chokepoint; the CLI --wallpaper flag is one of its call sites (see also
+# the appearance_menu unified/Advanced assertions added above).
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --preset recommended --wallpaper xmatrix --dry-run --apply 2>&1); rc=$?
+assert_eq "$rc" "0"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "xmatrix"
+rm -rf "$t_home" "$t_state"
+
+# I1: sync_ly_wallpaper (the Preview & Apply parent-shell sync — see its own
+# comment) is also a select_wallpaper chokepoint: a match_wallpaper=on
+# selection whose ly/animation maps to xmatrix must flip on component/xmatrix
+# too, not just dwm/wallpaper.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  state_set ly/match_wallpaper on
+  state_set ly/animation matrix
+  sync_ly_wallpaper
+  echo "wp=$(state_get dwm/wallpaper)"
+  echo "comp=$(state_get component/xmatrix)"
+')
+assert_contains "$out" "wp=xmatrix"
+assert_contains "$out" "comp=on"
+
+# M4: the unified Custom… branch used to unconditionally claim "desktop
+# wallpaper set to 'none'" even when the typed name happens to match a known
+# animation (ly_animation_to_wallpaper recognizes "doom"/"matrix" verbatim).
+# Typing "matrix" via Custom… must set dwm/wallpaper=xmatrix, flip on
+# component/xmatrix, and say so instead of lying about 'none'.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  appearance_menu
+  echo "anim=$(state_get ly/animation)"
+  echo "wp=$(state_get dwm/wallpaper)"
+  echo "comp=$(state_get component/xmatrix)"
+' <<< "1
+5
+matrix
+" 2>&1)
+assert_contains "$out" "anim=matrix"
+assert_contains "$out" "wp=xmatrix"
+assert_contains "$out" "comp=on"
+assert_eq "$(echo "$out" | grep -c "desktop wallpaper set to 'none'")" "0"
+
+# I2: detect_existing_setup used to clobber a preloaded/profile-loaded
+# wallpaper with a hardcoded "doomfire" guess whenever the ~/.xinitrc
+# wallpaper block existed, regardless of which wallpaper was actually wired
+# in. The launcher's own `exec WP` line is now authoritative: a generated
+# xmatrix launcher + the xinitrc block must read back as xmatrix, not
+# doomfire. ly/dwm signals are neutralized via the override seams so this is
+# deterministic regardless of the host running the suite.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  export HOME=$(mktemp -d)
+  mkdir -p "$HOME/.config/manjaro-sl"
+  printf "#!/usr/bin/env bash\nexec xmatrix\n" > "$HOME/.config/manjaro-sl/wallpaper.sh"
+  {
+    printf "# >>> manjaro-sl wallpaper >>>\n"
+    printf "\"\$HOME/.config/manjaro-sl/wallpaper.sh\" &\n"
+    printf "# <<< manjaro-sl wallpaper <<<\n"
+  } > "$HOME/.xinitrc"
+  LY_CONFIG_OVERRIDE=/nonexistent DWM_CHECK_OVERRIDE=missing detect_existing_setup >/dev/null 2>&1
+  echo "wallpaper=$(state_get dwm/wallpaper)"
+')
+assert_contains "$out" "wallpaper=xmatrix"
+
+# I2 counterpart: an xinitrc block with no launcher script at all (pre-
+# launcher install, or one that predates wallpaper.sh writing an `exec WP`
+# line) must still fall back to the old "doomfire" guess rather than picking
+# up nothing/erroring.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  export HOME=$(mktemp -d)
+  {
+    printf "# >>> manjaro-sl wallpaper >>>\n"
+    printf "\"\$HOME/.config/manjaro-sl/wallpaper.sh\" &\n"
+    printf "# <<< manjaro-sl wallpaper <<<\n"
+  } > "$HOME/.xinitrc"
+  LY_CONFIG_OVERRIDE=/nonexistent DWM_CHECK_OVERRIDE=missing detect_existing_setup >/dev/null 2>&1
+  echo "wallpaper=$(state_get dwm/wallpaper)"
+')
+assert_contains "$out" "wallpaper=doomfire"
+
+# I3/M2/M6: doc/comment accuracy — no more stale ly_menu references, and
+# "phase 2" -> "phase 3" wording lines up with the README/design spec.
+assert_eq "$(grep -c 'ly_menu' "$REPO_ROOT/lib/ly.sh")" "0"
+assert_eq "$(grep -c 'phase 2\|phase-2' "$REPO_ROOT/lib/ly.sh")" "0"
+assert_eq "$(grep -c 'phase 2\|phase-2' "$REPO_ROOT/lib/wallpaper.sh")" "0"
+assert_contains "$(cat "$REPO_ROOT/readme.md")" "runs once per launch, but only on the interactive path"
+assert_eq "$(grep -c 'before flags override anything' "$REPO_ROOT/readme.md")" "0"

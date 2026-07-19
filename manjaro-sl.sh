@@ -266,6 +266,23 @@ desktop_setup_menu() {
   done
 }
 
+# select_wallpaper WP — the single chokepoint for writing dwm/wallpaper.
+# Nothing else couples a chosen wallpaper to the component/* selection that
+# actually builds it, so a wallpaper picked here without also flipping on
+# its component gets exec'd by wallpaper.sh's launcher without ever having
+# been built or installed (I1 — flagship final-review-v2 bug; the launcher
+# runs backgrounded from ~/.xinitrc, so the failure is silent). Every call
+# site that sets dwm/wallpaper (appearance_menu's unified/custom/Advanced
+# branches, the --wallpaper flag, and sync_ly_wallpaper) must go through
+# this instead of calling state_set directly.
+select_wallpaper() {
+  local wp="$1"
+  state_set dwm/wallpaper "$wp"
+  case "$wp" in
+    doomfire|xmatrix) state_set "component/$wp" on ;;
+  esac
+}
+
 # Loops a tui_menu over appearance settings: a unified animation picker that
 # drives both the Ly login animation and the dwm desktop wallpaper together,
 # an Advanced escape hatch that decouples the two, and the Ly-on-boot
@@ -288,19 +305,28 @@ appearance_menu() {
           none     "None"      "$([ "$cur" = none ] && echo on || echo off)" \
           custom   "Custom…"   "$([[ "$cur" != doom && "$cur" != matrix && "$cur" != colormix && "$cur" != none ]] && echo on || echo off)") || continue
         if [ "$sel" = custom ]; then
-          local name
+          local name mapped
           name=$(tui_input "Ly animation" "Animation name" "$(state_get ly/animation)") || continue
           # Trim leading/trailing whitespace; an all-whitespace/empty entry
           # is treated as a cancel rather than storing a blank animation.
           name=$(echo "$name" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
           [ -z "$name" ] && continue
           state_set ly/animation "$name"
-          state_set dwm/wallpaper "$(ly_animation_to_wallpaper "$name")"
+          mapped=$(ly_animation_to_wallpaper "$name")
+          select_wallpaper "$mapped"
           state_set ly/match_wallpaper on
-          tui_msgbox "Appearance" "Custom Ly animations have no desktop wallpaper counterpart yet — desktop wallpaper set to 'none'."
+          # M4: most custom names have no desktop-wallpaper counterpart, but
+          # ly_animation_to_wallpaper still recognizes "doom"/"matrix" typed
+          # here — mirror the non-custom branch's messaging instead of
+          # unconditionally claiming "set to 'none'" when it wasn't.
+          if [ "$mapped" = none ]; then
+            tui_msgbox "Appearance" "Custom Ly animations have no desktop wallpaper counterpart yet — desktop wallpaper set to 'none'."
+          else
+            tui_msgbox "Appearance" "'${name}' matches a known desktop wallpaper — desktop wallpaper set to '${mapped}'."
+          fi
         else
           state_set ly/animation "$sel"
-          state_set dwm/wallpaper "$(ly_animation_to_wallpaper "$sel")"
+          select_wallpaper "$(ly_animation_to_wallpaper "$sel")"
           state_set ly/match_wallpaper on
           # colormix is a phase-2 stub for the desktop side (see
           # lib/wallpaper.sh's ly_animation_to_wallpaper); "none" legitimately
@@ -333,7 +359,7 @@ appearance_menu() {
           none     "None"      "$([ "$curw" = none ] && echo on || echo off)" \
           doomfire "DOOM fire" "$([ "$curw" = doomfire ] && echo on || echo off)" \
           xmatrix  "Matrix rain" "$([ "$curw" = xmatrix ] && echo on || echo off)") || continue
-        state_set dwm/wallpaper "$selw"
+        select_wallpaper "$selw"
         state_set ly/match_wallpaper off
         ;;
       enable)
@@ -425,7 +451,18 @@ detect_existing_setup() {
   fi
 
   if grep -q 'manjaro-sl wallpaper' "$HOME/.xinitrc" 2>/dev/null; then
-    state_set dwm/wallpaper doomfire
+    # I2: the launcher's own `exec WP` line is authoritative for which
+    # wallpaper is actually wired in — don't guess "doomfire" just because
+    # the block exists (that clobbered a preloaded/profile-loaded xmatrix
+    # selection). Only fall back to the old doomfire guess when the
+    # launcher itself is missing/unreadable (pre-launcher installs where the
+    # xinitrc block predates wallpaper.sh writing a launcher script).
+    local wp
+    wp=$(sed -n 's/^exec //p' "$HOME/.config/manjaro-sl/wallpaper.sh" 2>/dev/null | head -n1 || true)
+    case "$wp" in
+      doomfire|xmatrix) state_set dwm/wallpaper "$wp" ;;
+      *)                state_set dwm/wallpaper doomfire ;;
+    esac
   else
     state_set dwm/wallpaper none
   fi
@@ -618,7 +655,7 @@ apply_configuration() {
 # wallpaper implied by ly/match_wallpaper is lost.
 sync_ly_wallpaper() {
   if state_on ly/match_wallpaper; then
-    state_set dwm/wallpaper "$(ly_animation_to_wallpaper "$(state_get ly/animation)")"
+    select_wallpaper "$(ly_animation_to_wallpaper "$(state_get ly/animation)")"
   fi
 }
 
@@ -748,7 +785,7 @@ parse_args() {
       --wallpaper)
         [ $# -ge 2 ] || { echo "Error: --wallpaper requires a value." >&2; exit 1; }
         case "$2" in
-          none|doomfire|xmatrix) state_set dwm/wallpaper "$2" ;;
+          none|doomfire|xmatrix) select_wallpaper "$2" ;;
           *) echo "Error: --wallpaper must be 'none', 'doomfire', or 'xmatrix'." >&2; exit 1 ;;
         esac
         shift

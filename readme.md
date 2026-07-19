@@ -74,17 +74,22 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
 
 ### Auto-preload
 
-There is no separate "Reconfigure" menu item anymore. Every launch of the
-TUI (including `-y`/flag-driven non-interactive runs, before flags override
-anything) runs `detect_existing_setup`, which checks for any of: a `dwm`
-binary on `PATH`, an `/etc/ly/config.ini`, or a `~/.xinitrc` — or falls back
-to a saved profile at `~/.config/manjaro-sl/profile`. If any signal is
-found, the main menu banner reads **"existing setup detected — current
-settings loaded"** and every screen is pre-checked to match what's already
-applied (modkey, bar color, slstatus interface/battery, Ly animation +
-enabled state, wallpaper). Otherwise the banner reads **"fresh setup"** and
-every screen starts from defaults. Either way, visit any menu to change a
-value, then use **Preview & Apply** as normal — changed files are
+There is no separate "Reconfigure" menu item anymore. `detect_existing_setup`
+runs once per launch, but only on the interactive path — after argv flags
+have already been parsed, and only when the run is headed for the main menu
+rather than straight to `--apply`/`-y`; non-interactive/flag-driven runs
+(`--apply`, `-y`) skip it entirely, since nothing is around to look at a
+pre-filled menu. It first loads a saved profile from
+`~/.config/manjaro-sl/profile` (if one exists) into the in-memory selection
+state, then separately checks for any of: a `dwm` binary on `PATH`, an
+`/etc/ly/config.ini`, or a `~/.xinitrc` — the profile load itself is not one
+of these signals, so a loaded profile alone does not flip the banner. If any
+of those three checks fires, the main menu banner reads **"existing setup
+detected — current settings loaded"** and every screen is pre-checked to
+match what's already applied (modkey, bar color, slstatus interface/battery,
+Ly animation + enabled state, wallpaper). Otherwise the banner reads **"fresh
+setup"**, even if a profile was loaded. Either way, visit any menu to change
+a value, then use **Preview & Apply** as normal — changed files are
 overwritten with backups using the existing `copy_with_backup` pattern, so
 nothing is silently lost.
 

@@ -222,9 +222,10 @@ configure_ly_display_manager() {
 
   # I-C2: when selection state is available (state.sh sourced — always true
   # from manjaro-sl.sh, never true from the legacy build_suckless.sh path)
-  # and ly/enable was EXPLICITLY set to "off" (e.g. via ly_menu's checklist),
-  # skip enabling/starting Ly entirely — it's write-only otherwise: a user
-  # who unchecks "Enable Ly on boot" still got it enabled and started. Unset
+  # and ly/enable was EXPLICITLY set to "off" (e.g. via appearance_menu's
+  # "Enable Ly on boot" radiolist), skip enabling/starting Ly entirely —
+  # it's write-only otherwise: a user who unchecks "Enable Ly on boot" still
+  # got it enabled and started. Unset
   # (state function absent, or key never set) keeps today's behavior: enable
   # + start as before. state_get itself can't distinguish "unset" from
   # "explicitly off" (both fall back to "off"), so the SELECTIONS array is
@@ -308,7 +309,7 @@ configure_ly_display_manager() {
         state_set dwm/wallpaper "$mapped_wallpaper"
         if [ "$mapped_wallpaper" = "none" ] && [ "$chosen_animation" != "none" ] \
           && declare -F tui_msgbox >/dev/null 2>&1; then
-          tui_msgbox "Wallpaper" "The '${chosen_animation}' Ly animation does not have a matching dwm wallpaper yet — that arrives in phase 2. Falling back to no wallpaper animation for dwm."
+          tui_msgbox "Wallpaper" "The '${chosen_animation}' Ly animation does not have a matching dwm wallpaper yet — that arrives in phase 3. Falling back to no wallpaper animation for dwm."
         fi
       fi
 
@@ -316,7 +317,7 @@ configure_ly_display_manager() {
       echo "Updated Ly animation to '${chosen_animation}'."
     elif [ "$ACCEPT_DEFAULTS" -eq 1 ] && declare -F state_get >/dev/null 2>&1; then
       # Non-interactive (Preview & Apply / apply_all) path: the animation the
-      # user picked in the TUI's ly_menu lives in SELECTIONS[ly/animation],
+      # user picked in the TUI's appearance_menu lives in SELECTIONS[ly/animation],
       # but the interactive prompt above never runs under ACCEPT_DEFAULTS=1,
       # so without this branch the TUI-chosen animation was silently dropped.
       local noninteractive_animation

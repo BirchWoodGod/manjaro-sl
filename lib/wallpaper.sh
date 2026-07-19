@@ -9,7 +9,7 @@ ly_animation_to_wallpaper() {
   case "$1" in
     doom)   echo doomfire ;;
     matrix) echo xmatrix ;;
-    *)      echo none ;;   # colormix is phase 2
+    *)      echo none ;;   # colormix is a phase-3 stub
   esac
 }
 
