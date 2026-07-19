@@ -337,10 +337,23 @@ apply_configuration() {
   setup_misc_files
 }
 
+# run_step's subshell isolation (see apply_configuration's comment above)
+# means a state_set made inside one run_step call never reaches the next
+# one. ly_menu's "sync animation to dwm wallpaper" option is normally
+# applied inline when set interactively, but during Preview & Apply nothing
+# ever runs ly_menu — so this parent-shell sync must happen once, before any
+# run_step call, or the dwm wallpaper picked via ly/match_wallpaper is lost.
+sync_ly_wallpaper() {
+  if state_on ly/match_wallpaper; then
+    state_set dwm/wallpaper "$(ly_animation_to_wallpaper "$(state_get ly/animation)")"
+  fi
+}
+
 # Fixed order: debloat → tweaks → install → build → configure → ly →
 # wallpaper → summary, each via run_step so failures offer continue/abort.
 apply_all() {
   ACCEPT_DEFAULTS=1
+  sync_ly_wallpaper
   run_step "Debloat"           debloat_apply
   run_step "System tweaks"     tweaks_apply
   run_step "Install packages"  install_selected_packages

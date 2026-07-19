@@ -93,4 +93,14 @@ preset_apply() {
     minimal)     state_set dwm/wallpaper none ;;
   esac
   state_set ly/enable on
+  # Old DE/DM removal: "checked" under Minimal, "prompt" (untouched) under
+  # Recommended per the spec's preset table. Only mark entries that are
+  # actually installed; guarded so this stays a no-op (and testable without
+  # pacman) when debloat.sh isn't sourced or pacman isn't available.
+  if [ "$preset" = minimal ] && declare -F debloat_installed_from >/dev/null && command -v pacman >/dev/null 2>&1; then
+    local f
+    for f in "$REPO_ROOT/data/de.list" "$REPO_ROOT/data/dm.list"; do
+      while IFS='|' read -r name desc state; do state_set "debloat/$name" on; done < <(debloat_installed_from "$f")
+    done
+  fi
 }

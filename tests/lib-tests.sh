@@ -141,6 +141,17 @@ assert_contains "$out" "+ sudo pacman -Rns"
 assert_contains "$out" "bluez"
 unset -f pacman
 
+# preset_apply minimal marks installed old DEs/DMs for removal; recommended
+# leaves them untouched ("prompt" per the spec's preset table)
+pacman() { [ "$1" = "-Qq" ] && { [ "$2" = "sddm" ]; return; }; command pacman "$@"; }
+unset SELECTIONS; declare -gA SELECTIONS
+preset_apply minimal
+assert_eq "$(state_get debloat/sddm)" "on"
+unset SELECTIONS; declare -gA SELECTIONS
+preset_apply recommended
+assert_eq "$(state_get debloat/sddm)" "off"
+unset -f pacman
+
 source "$REPO_ROOT/lib/tweaks.sh"
 declare -gA SELECTIONS=()
 state_set "tweak/enable:fstrim.timer" on
@@ -217,3 +228,53 @@ assert_contains "$out" "feh"
 assert_contains "$out" "modkey=super"
 assert_contains "$out" "enable:fstrim.timer"
 assert_contains "$out" "doomfire"
+
+# apply_all's run_step subshells can't propagate cross-step state_set calls
+# (see apply_configuration's comment), so the ly/match_wallpaper -> dwm/
+# wallpaper sync must happen in the parent shell before any run_step call.
+# sync_ly_wallpaper is that parent-shell sync, factored out for testability.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  state_set ly/match_wallpaper on
+  state_set ly/animation doom
+  sync_ly_wallpaper
+  state_get dwm/wallpaper
+')
+assert_eq "$out" "doomfire"
+
+# no sync when match_wallpaper is off
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  state_set ly/match_wallpaper off
+  state_set ly/animation doom
+  sync_ly_wallpaper
+  state_get dwm/wallpaper
+')
+assert_eq "$out" "off"
+
+source "$REPO_ROOT/lib/ly.sh"
+
+# Gap A: configure_ly_display_manager must write the TUI-chosen animation
+# even under ACCEPT_DEFAULTS=1 (Preview & Apply / apply_all), not just in
+# the interactive prompt path. Mock everything that would otherwise touch
+# the real system.
+pacman() { [ "$1" = "-Qi" ] && [ "$2" = "ly" ]; }
+systemctl() { return 1; }
+run_with_privilege() { echo "RWP: $*"; }
+require_command() { :; }
+unset SELECTIONS; declare -gA SELECTIONS
+ACCEPT_DEFAULTS=1
+state_set ly/animation matrix
+out=$(configure_ly_display_manager 2>&1)
+assert_contains "$out" "Updating animation to: matrix"
+assert_contains "$out" "RWP: python3 - /etc/ly/config.ini matrix"
+
+# ...but not when no animation was selected (state absent/off)
+unset SELECTIONS; declare -gA SELECTIONS
+ACCEPT_DEFAULTS=1
+out=$(configure_ly_display_manager 2>&1)
+assert_eq "$(echo "$out" | grep -c 'Updating animation to')" "0"
+
+unset -f pacman systemctl run_with_privilege require_command

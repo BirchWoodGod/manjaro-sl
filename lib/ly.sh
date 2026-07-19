@@ -149,6 +149,53 @@ detect_and_remove_old_de() {
   echo
 }
 
+# ly_write_animation ANIM — back up /etc/ly/config.ini and set its
+# `animation =` line to ANIM. Shared by the interactive prompt in
+# configure_ly_display_manager and the non-interactive (ACCEPT_DEFAULTS=1)
+# branch that applies the TUI-chosen SELECTIONS[ly/animation] during
+# Preview & Apply.
+ly_write_animation() {
+  local ly_config="/etc/ly/config.ini"
+  local chosen_animation="$1"
+
+  # Back up the config before making changes
+  local timestamp
+  timestamp=$(date +%Y%m%d%H%M%S)
+  run_with_privilege cp "$ly_config" "${ly_config}.${timestamp}.bak"
+  echo "Config backed up to ${ly_config}.${timestamp}.bak"
+
+  # Update animation setting
+  echo "Updating animation to: ${chosen_animation}"
+  require_command python3 "Python 3 is needed to update Ly animation configuration."
+  run_with_privilege python3 - "$ly_config" "$chosen_animation" <<'PY'
+import sys
+import re
+
+path, animation = sys.argv[1:3]
+with open(path, 'r') as fh:
+    lines = fh.readlines()
+
+# Update or add animation setting
+updated_lines = []
+animation_found = False
+
+for line in lines:
+    # Match animation=value or animation = value (with any amount of whitespace)
+    if re.match(r'^\s*animation\s*=\s*', line):
+        updated_lines.append(f'animation = {animation}\n')
+        animation_found = True
+    else:
+        updated_lines.append(line)
+
+# If animation setting wasn't found, add it
+if not animation_found:
+    updated_lines.append(f'animation = {animation}\n')
+
+with open(path, 'w') as fh:
+    fh.writelines(updated_lines)
+PY
+}
+
 configure_ly_display_manager() {
   # Check if Ly is installed via pacman
   if ! command -v pacman >/dev/null 2>&1 || ! pacman -Qi ly >/dev/null 2>&1; then
@@ -244,43 +291,19 @@ configure_ly_display_manager() {
         fi
       fi
 
-      # Back up the config before making changes
-      local timestamp
-      timestamp=$(date +%Y%m%d%H%M%S)
-      run_with_privilege cp "$ly_config" "${ly_config}.${timestamp}.bak"
-      echo "Config backed up to ${ly_config}.${timestamp}.bak"
-
-      # Update animation setting
-      echo "Updating animation to: ${chosen_animation}"
-      require_command python3 "Python 3 is needed to update Ly animation configuration."
-      run_with_privilege python3 - "$ly_config" "$chosen_animation" <<'PY'
-import sys
-import re
-
-path, animation = sys.argv[1:3]
-with open(path, 'r') as fh:
-    lines = fh.readlines()
-
-# Update or add animation setting
-updated_lines = []
-animation_found = False
-
-for line in lines:
-    # Match animation=value or animation = value (with any amount of whitespace)
-    if re.match(r'^\s*animation\s*=\s*', line):
-        updated_lines.append(f'animation = {animation}\n')
-        animation_found = True
-    else:
-        updated_lines.append(line)
-
-# If animation setting wasn't found, add it
-if not animation_found:
-    updated_lines.append(f'animation = {animation}\n')
-
-with open(path, 'w') as fh:
-    fh.writelines(updated_lines)
-PY
+      ly_write_animation "$chosen_animation"
       echo "Updated Ly animation to '${chosen_animation}'."
+    elif [ "$ACCEPT_DEFAULTS" -eq 1 ] && declare -F state_get >/dev/null 2>&1; then
+      # Non-interactive (Preview & Apply / apply_all) path: the animation the
+      # user picked in the TUI's ly_menu lives in SELECTIONS[ly/animation],
+      # but the interactive prompt above never runs under ACCEPT_DEFAULTS=1,
+      # so without this branch the TUI-chosen animation was silently dropped.
+      local noninteractive_animation
+      noninteractive_animation=$(state_get ly/animation)
+      if [ -n "$noninteractive_animation" ] && [ "$noninteractive_animation" != "off" ]; then
+        ly_write_animation "$noninteractive_animation"
+        echo "Updated Ly animation to '${noninteractive_animation}'."
+      fi
     fi
   else
     echo "Warning: Ly config file not found at $ly_config"
