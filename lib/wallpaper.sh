@@ -37,9 +37,12 @@ available_wallpapers() {
 
 ly_animation_to_wallpaper() {
   case "$1" in
-    doom)   echo doomfire ;;
-    matrix) echo xmatrix ;;
-    *)      echo none ;;   # colormix is a phase-3 stub
+    doom)       echo doomfire ;;
+    matrix)     echo xmatrix ;;
+    colormix)   echo xcolormix ;;
+    gameoflife) echo xgameoflife ;;   # verified Ly 1.4 token (config.ini.example)
+    blackhole)  echo xblackhole ;;    # not a native Ly token; Custom…-typed convention
+    *)          echo none ;;
   esac
 }
 

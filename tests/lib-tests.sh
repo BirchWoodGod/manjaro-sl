@@ -224,7 +224,17 @@ assert_contains "$(head -n1 "$HOME/.xinitrc")" "exec bash"
 
 assert_eq "$(ly_animation_to_wallpaper doom)" "doomfire"
 assert_eq "$(ly_animation_to_wallpaper matrix)" "xmatrix"
-assert_eq "$(ly_animation_to_wallpaper colormix)" "none"
+assert_eq "$(ly_animation_to_wallpaper colormix)" "xcolormix"
+# gameoflife: verified against the shipped /etc/ly/config.ini.example (ly
+# 1.4.1-1) animation comment block, which lists "gameoflife -> John
+# Conway's Game of Life" verbatim — that exact token, no hyphen.
+assert_eq "$(ly_animation_to_wallpaper gameoflife)" "xgameoflife"
+# blackhole is not a real Ly config token (no such value in ly's own
+# config.ini.example; a real black hole needs animation=dur_file +
+# dur_file_path) — it's a Custom…-only convention this project recognizes
+# so a community .dur black hole animation gets a matching desktop wallpaper.
+assert_eq "$(ly_animation_to_wallpaper blackhole)" "xblackhole"
+assert_eq "$(ly_animation_to_wallpaper somethingelse)" "none"
 
 # regression: the awk insert-before-exec-dwm path must preserve the execute
 # bit — Ly runs ~/.xinitrc as a program, so dropping +x locks the user out
@@ -875,8 +885,10 @@ assert_ok test -f "$REPO_ROOT/docs/bug_report_and_recommendations.md"
 # explicit "go back" keystroke.
 
 # 1) Unified Animation picker: top menu tag order is
-#    animation(1) advanced(2) enable(3) back(4); the Animation radiolist's
-#    tag order is doom(1) matrix(2) colormix(3) none(4) custom(5).
+#    animation(1) advanced(2) enable(3) back(4); the Animation radiolist
+#    gained a gameoflife entry (after matrix, before colormix) in P3 Task 5,
+#    so its tag order is now doom(1) matrix(2) gameoflife(3) colormix(4)
+#    none(5) custom(6).
 #    "1\n2\n" => open Animation, pick "matrix" => ly/animation=matrix,
 #    dwm/wallpaper=xmatrix (ly_animation_to_wallpaper mapping),
 #    ly/match_wallpaper=on.
@@ -899,10 +911,13 @@ assert_contains "$out" "match=on"
 # launcher execs a binary that was never built (flagship final-review-v2 bug).
 assert_contains "$out" "comp=on"
 
-# 2) Custom animation: same top pick (1=Animation), radiolist pick "5"
-#    (custom = last tag), then the tui_input prompt reads the name verbatim.
-#    ly/animation stores the name as-is; dwm/wallpaper falls back to "none"
-#    since ly_animation_to_wallpaper only recognizes doom/matrix.
+# 2) Custom animation: same top pick (1=Animation), radiolist pick "6"
+#    (custom = last tag, shifted from 5 after the gameoflife entry was
+#    inserted — see block 1's comment), then the tui_input prompt reads the
+#    name verbatim. A genuinely unmapped name ("spinningcube") stores as-is
+#    and dwm/wallpaper falls back to "none" since ly_animation_to_wallpaper
+#    doesn't recognize it (contrast block 2b below, where "blackhole" IS
+#    recognized as a Custom…-only mapping).
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
@@ -910,15 +925,36 @@ out=$(TUI_ACTIVE=0 bash -c '
   echo "anim=$(state_get ly/animation)"
   echo "wp=$(state_get dwm/wallpaper)"
 ' <<< "1
-5
+6
+spinningcube
+")
+assert_contains "$out" "anim=spinningcube"
+assert_contains "$out" "wp=none"
+
+# 2b) Custom animation "blackhole": not a native Ly token (see the
+# ly_animation_to_wallpaper tests above), but this project recognizes it as
+# a Custom…-only convention for the community .dur black hole animation,
+# now that xblackhole (P3 Task 4) gives it a real desktop counterpart.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  appearance_menu
+  echo "anim=$(state_get ly/animation)"
+  echo "wp=$(state_get dwm/wallpaper)"
+  echo "comp=$(state_get component/xblackhole)"
+' <<< "1
+6
 blackhole
 ")
 assert_contains "$out" "anim=blackhole"
-assert_contains "$out" "wp=none"
+assert_contains "$out" "wp=xblackhole"
+assert_contains "$out" "comp=on"
 
-# 3) Advanced: top pick "2" (Advanced); its Ly-animation radiolist uses the
-#    same doom/matrix/colormix/none/custom tag order as Animation ("2" =
-#    matrix, stored directly into ly/animation with no wallpaper mapping);
+# 3) Advanced: top pick "2" (Advanced); its Ly-animation radiolist is
+#    untouched by P3 Task 5 (gameoflife was only added to the unified
+#    Animation radiolist, not this one) — still doom(1) matrix(2)
+#    colormix(3) none(4) custom(5) ("2" = matrix, stored directly into
+#    ly/animation with no wallpaper mapping);
 #    its desktop-wallpaper radiolist tag order is none(1) doomfire(2)
 #    xmatrix(3) ("2" = doomfire, stored directly into dwm/wallpaper). The
 #    two keys are set independently and ly/match_wallpaper is forced off.
@@ -940,6 +976,46 @@ assert_contains "$out" "match=off"
 # I1: the Advanced desktop-wallpaper radiolist is also a select_wallpaper
 # chokepoint — same guarantee as the unified picker above.
 assert_contains "$out" "comp=on"
+
+# --- P3 Task 5: gameoflife + colormix join the unified picker's real
+#     mappings -----------------------------------------------------------
+
+# 4) Unified Animation picker: gameoflife (tag 3, inserted after matrix,
+#    before colormix) maps to xgameoflife and flips on its component, same
+#    as any other radiolist entry (I1 guarantee).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  appearance_menu
+  echo "anim=$(state_get ly/animation)"
+  echo "wp=$(state_get dwm/wallpaper)"
+  echo "match=$(state_get ly/match_wallpaper)"
+  echo "comp=$(state_get component/xgameoflife)"
+' <<< "1
+3
+")
+assert_contains "$out" "anim=gameoflife"
+assert_contains "$out" "wp=xgameoflife"
+assert_contains "$out" "match=on"
+assert_contains "$out" "comp=on"
+
+# 5) Unified Animation picker: colormix (tag 4) now maps to a real desktop
+#    wallpaper (xcolormix) — the phase-3 stub notice branch was removed, so
+#    no msgbox (and no "phase-3" text) fires for it anymore.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  appearance_menu
+  echo "anim=$(state_get ly/animation)"
+  echo "wp=$(state_get dwm/wallpaper)"
+  echo "match=$(state_get ly/match_wallpaper)"
+' <<< "1
+4
+")
+assert_contains "$out" "anim=colormix"
+assert_contains "$out" "wp=xcolormix"
+assert_contains "$out" "match=on"
+assert_eq "$(echo "$out" | grep -c "phase-3")" "0"
 
 # Menu integrity (static source assertions): task-oriented main menu items
 # present, legacy per-screen entrances and their tui_menu titles gone.
@@ -991,7 +1067,8 @@ assert_contains "$out" "comp=on"
 # wallpaper set to 'none'" even when the typed name happens to match a known
 # animation (ly_animation_to_wallpaper recognizes "doom"/"matrix" verbatim).
 # Typing "matrix" via Custom… must set dwm/wallpaper=xmatrix, flip on
-# component/xmatrix, and say so instead of lying about 'none'.
+# component/xmatrix, and say so instead of lying about 'none'. Custom is now
+# tag "6" (shifted from "5" — see block 1's comment on the gameoflife entry).
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
@@ -1000,7 +1077,7 @@ out=$(TUI_ACTIVE=0 bash -c '
   echo "wp=$(state_get dwm/wallpaper)"
   echo "comp=$(state_get component/xmatrix)"
 ' <<< "1
-5
+6
 matrix
 " 2>&1)
 assert_contains "$out" "anim=matrix"

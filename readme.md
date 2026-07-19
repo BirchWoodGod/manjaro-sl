@@ -139,33 +139,41 @@ flag can override:
 ### Appearance
 
 The **Appearance** menu has one primary control: a radiolist —
-**doom / matrix / colormix / none / Custom…** — that drives BOTH the Ly
-login-screen animation and the dwm desktop wallpaper together (this sets
-`ly/match_wallpaper=on` under the hood):
+**doom / matrix / gameoflife / colormix / none / Custom…** — that drives
+BOTH the Ly login-screen animation and the dwm desktop wallpaper together
+(this sets `ly/match_wallpaper=on` under the hood):
 
 | Ly animation choice | Desktop wallpaper |
 |---|---|
 | `doom` | `doomfire` |
 | `matrix` | `xmatrix` |
-| `colormix` | `none` (phase-3 stub — see [Wallpaper](#wallpaper)) |
+| `gameoflife` | `xgameoflife` |
+| `colormix` | `xcolormix` |
 | `none` | `none` |
-| Custom… (any name) | `none` |
+| Custom… `blackhole` | `xblackhole` (see below) |
+| Custom… (any other name) | `none` |
 
 Custom… opens a text prompt accepting **any** Ly animation name, written
 verbatim to `/etc/ly/config.ini`. This is the forward-compatibility path
 for animations `manjaro-sl` doesn't know about — Ly v1.4+ supports
-community `.dur` animation files (e.g. a black hole effect), which you can
-drop into your Ly config directory yourself and then select here by name.
-See [Ly's community animations](https://github.com/JBongars/ly-animation)
+community `.dur` animation files (e.g. a black hole effect: Ly itself needs
+`animation = dur_file` plus `dur_file_path` pointing at the asset, which
+isn't expressible through this single-name prompt), which you can drop into
+your Ly config directory yourself. Typing `blackhole` here is a
+`manjaro-sl`-only convention layered on top: it doesn't configure Ly's side
+(you still set up the real `dur_file`/`dur_file_path` yourself for the
+login screen), but it now gets you the matching `xblackhole` desktop
+wallpaper. See [Ly's community animations](https://github.com/JBongars/ly-animation)
 for examples. There is no validation against the installed Ly version —
-an unknown name is trimmed and passed through as-is; Ly ignores/falls back
-on names it doesn't recognize.
+any other unknown name is trimmed and passed through as-is; Ly
+ignores/falls back on names it doesn't recognize.
 
 An **Advanced: set login screen and desktop separately** toggle splits the
-one control into two independent radiolists — Ly login animation (same five
-choices) and desktop wallpaper (`none`/`doomfire`/`xmatrix`) — for combos
-the unified mapping can't express, like a `matrix` login screen with a
-`doomfire` desktop. Picking Advanced sets `ly/match_wallpaper=off`.
+one control into two independent radiolists — Ly login animation
+(`doom`/`matrix`/`colormix`/`none`/Custom…, not including `gameoflife` yet)
+and desktop wallpaper (`none` + every wallpaper whose program is built) —
+for combos the unified mapping can't express, like a `matrix` login screen
+with a `doomfire` desktop. Picking Advanced sets `ly/match_wallpaper=off`.
 
 The **Enable Ly on boot** checkbox also lives on this screen.
 
@@ -192,12 +200,39 @@ They need an active X server but no window manager or compositor.
   `DENSITY`/`SPAWN_P` (active-column fraction and spawn probability),
   `FONTNAME` (X11 core font, default `"fixed"`), `CHARSET` (glyphs cycled
   at random), and the tail/head RGB shades.
-- **`xcolormix`, `xblackhole`** — named here as the next two planned
-  wallpapers (phase 3), not yet implemented; `colormix` currently maps to
-  `none` on the desktop side (see the Appearance mapping table above). No
-  official Ly animation exists for a black hole effect yet — community
-  `.dur` animations cover that on the login side via Appearance's Custom…
-  entry.
+- **`xcolormix/`** (built) — shifting HSV gradient blend: 3-4 anchor hues
+  rotating slowly around the color wheel, blended left-to-right and
+  rendered into a scaled buffer (doomfire technique) each frame. Tunable in
+  `xcolormix/config.h` (copy from `config.def.h`): `FPS` (default 24),
+  buffer resolution `BUF_W`/`BUF_H` (default 320x180), the `ANCHORS[]` hue
+  array (degrees, default 4 hues), rotation period `CYCLE_SEC` (default
+  60), and `SAT`/`VAL` (saturation/value, default 0.85/0.55).
+- **`xgameoflife/`** (built) — Conway's Game of Life on a toroidal grid,
+  standard B3/S23 rules, with auto-reseed when the population stagnates
+  (dies out or locks into a still life/period-2 oscillator). Tunable in
+  `xgameoflife/config.h` (copy from `config.def.h`): `FPS` (default 10 —
+  generations/sec, not frames/sec), `CELL` (cell size in pixels, default
+  8), `SEED_DENSITY` (fraction of cells alive on (re)seed, default 0.25),
+  `STALE_GENS` (generations without population change before reseeding,
+  default 120), and `ALIVE_COLOR`/`DEAD_COLOR`.
+- **`xblackhole/`** (built) — accretion-disk swirl: particles on decaying
+  spiral orbits around screen center, re-emitted at the outer rim to keep a
+  steady state, brightening toward the inner edge; a pure-black event
+  horizon at the center swallows and re-emits anything that crosses it.
+  Tunable in `xblackhole/config.h` (copy from `config.def.h`): `FPS`
+  (default 24), `NPARTICLES` (default 600), `HOLE_FRAC` (event-horizon
+  radius as a fraction of `min(width,height)/2`, default 0.12), the swirl
+  rotation constants `ROT_C`/`ROT_S` and radial `DECAY`, and the `RAMP[]`
+  inner-to-outer color gradient (a blue alternative is commented in the
+  file). Ly itself has no official black hole animation — this pairs with
+  a community `.dur` animation on the login side via Appearance's Custom…
+  entry (see [Appearance](#appearance) for the `blackhole` naming
+  convention).
+
+The next round (phase 3, continued) adds four more customs — `xstarfield`,
+`xplasma`, `xrain`, `xfireflies` — none of which have a matching Ly login
+animation, so they'll only ever be reachable via the Advanced desktop
+radiolist.
 
 ---
 
@@ -334,12 +369,14 @@ Configuration lives at `/etc/ly/config.ini`. Available animations include:
 - `doom` - Doom-style animation
 - `matrix` - Matrix digital rain effect
 - `colormix` - Color mixing animation
+- `gameoflife` - Conway's Game of Life
 - `none` - No animation (default)
 
-You can also set any other animation name Ly's config accepts (e.g. a
-community `.dur` file you dropped in yourself). The TUI's Appearance screen
-(see above) offers the same four built-ins plus a **Custom…** entry for
-this, configures Ly with your chosen animation, and enables the service; it
+You can also set any other animation name Ly's config accepts (e.g.
+`animation = dur_file` with `dur_file_path` pointing at a community `.dur`
+file you dropped in yourself). The TUI's Appearance screen (see above)
+offers the same five built-ins plus a **Custom…** entry for this,
+configures Ly with your chosen animation, and enables the service; it
 never stops an already-running display manager.
 
 ### Xinitrc and desktop entry

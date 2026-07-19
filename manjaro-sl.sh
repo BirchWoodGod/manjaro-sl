@@ -309,11 +309,12 @@ appearance_menu() {
         local cur sel
         cur=$(state_get ly/animation); [ "$cur" = off ] && cur=none
         sel=$(tui_radiolist "Animation" "Choose login animation (also sets the desktop wallpaper)" \
-          doom     "Doom"      "$([ "$cur" = doom ] && echo on || echo off)" \
-          matrix   "Matrix"    "$([ "$cur" = matrix ] && echo on || echo off)" \
-          colormix "ColorMix"  "$([ "$cur" = colormix ] && echo on || echo off)" \
-          none     "None"      "$([ "$cur" = none ] && echo on || echo off)" \
-          custom   "Custom…"   "$([[ "$cur" != doom && "$cur" != matrix && "$cur" != colormix && "$cur" != none ]] && echo on || echo off)") || continue
+          doom       "Doom"         "$([ "$cur" = doom ] && echo on || echo off)" \
+          matrix     "Matrix"       "$([ "$cur" = matrix ] && echo on || echo off)" \
+          gameoflife "Game of Life" "$([ "$cur" = gameoflife ] && echo on || echo off)" \
+          colormix   "ColorMix"     "$([ "$cur" = colormix ] && echo on || echo off)" \
+          none       "None"         "$([ "$cur" = none ] && echo on || echo off)" \
+          custom     "Custom…"      "$([[ "$cur" != doom && "$cur" != matrix && "$cur" != gameoflife && "$cur" != colormix && "$cur" != none ]] && echo on || echo off)") || continue
         if [ "$sel" = custom ]; then
           local name mapped
           name=$(tui_input "Ly animation" "Animation name" "$(state_get ly/animation)") || continue
@@ -326,8 +327,10 @@ appearance_menu() {
           select_wallpaper "$mapped"
           state_set ly/match_wallpaper on
           # M4: most custom names have no desktop-wallpaper counterpart, but
-          # ly_animation_to_wallpaper still recognizes "doom"/"matrix" typed
-          # here — mirror the non-custom branch's messaging instead of
+          # ly_animation_to_wallpaper still recognizes "doom"/"matrix"/
+          # "gameoflife"/"colormix" (all also on the radiolist) and
+          # "blackhole" (Custom…-only — see lib/wallpaper.sh) typed here —
+          # mirror the non-custom branch's messaging instead of
           # unconditionally claiming "set to 'none'" when it wasn't.
           if [ "$mapped" = none ]; then
             tui_msgbox "Appearance" "Custom Ly animations have no desktop wallpaper counterpart yet — desktop wallpaper set to 'none'."
@@ -338,12 +341,10 @@ appearance_menu() {
           state_set ly/animation "$sel"
           select_wallpaper "$(ly_animation_to_wallpaper "$sel")"
           state_set ly/match_wallpaper on
-          # colormix is a phase-3 stub for the desktop side (see
-          # lib/wallpaper.sh's ly_animation_to_wallpaper); "none" legitimately
-          # maps to "none" and needs no notice.
-          if [ "$sel" != none ] && [ "$(ly_animation_to_wallpaper "$sel")" = none ]; then
-            tui_msgbox "Appearance" "'${sel}' is a phase-3 stub for the desktop wallpaper — the Ly login screen will still use it, but no desktop wallpaper will be shown."
-          fi
+          # Every fixed radiolist entry (doom/matrix/gameoflife/colormix/none)
+          # now maps to a real wallpaper or legitimately to "none" — no stub
+          # notice needed here. Unmapped names only reach the Custom… branch
+          # above, whose own notice covers that case.
         fi
         ;;
       advanced)
