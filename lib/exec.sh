@@ -41,10 +41,11 @@ run_step() {
     RUN_LOG="$(log_dir)/run-$(date +%Y%m%d%H%M%S).log"
   fi
   echo "==> ${title}" | tee -a "$RUN_LOG"
-  if "$fn" 2>&1 | tee -a "$RUN_LOG"; then
+  "$fn" 2>&1 | tee -a "$RUN_LOG"
+  local rc=${PIPESTATUS[0]}
+  if [ "$rc" -eq 0 ]; then
     return 0
   fi
-  local rc=$?
   echo "Step '${title}' failed (exit $rc). Log: $RUN_LOG" >&2
   if declare -F tui_yesno >/dev/null && [ "${TUI_ACTIVE:-0}" -eq 1 ]; then
     if tui_yesno "Step failed" "Step '${title}' failed.\nLog: ${RUN_LOG}\n\nContinue with remaining steps?"; then

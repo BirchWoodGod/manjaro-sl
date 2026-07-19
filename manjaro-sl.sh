@@ -4,7 +4,7 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 for m in exec tui state; do
-  [ -f "$REPO_ROOT/lib/$m.sh" ] && source "$REPO_ROOT/lib/$m.sh"
+  [ -f "$REPO_ROOT/lib/$m.sh" ] && source "$REPO_ROOT/lib/$m.sh"  # shellcheck source=/dev/null
 done
 
 main() {

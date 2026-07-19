@@ -19,3 +19,22 @@ rm -f "$tmpf"
 d=$(XDG_STATE_HOME=$(mktemp -d) log_dir)
 assert_ok test -d "$d"
 assert_contains "$d" "manjaro-sl"
+
+# run_step detects failure even without caller pipefail (regression)
+step_fail() { return 7; }
+# Test 1: failing step with "n" (abort) should return nonzero, not swallowed by pipeline
+(
+  set +o pipefail
+  XDG_STATE_HOME=$(mktemp -d)
+  RUN_LOG=""
+  run_step "test_fail" step_fail <<< "n" >/dev/null 2>&1
+)
+assert_fail test "$?" -eq 0
+# Test 2: failing step with "y" (continue) should return 0
+(
+  set +o pipefail
+  XDG_STATE_HOME=$(mktemp -d)
+  RUN_LOG=""
+  run_step "test_fail" step_fail <<< "y" >/dev/null 2>&1
+)
+assert_ok test "$?" -eq 0
