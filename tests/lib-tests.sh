@@ -38,3 +38,31 @@ assert_fail test "$?" -eq 0
   run_step "test_fail" step_fail <<< "y" >/dev/null 2>&1
 )
 assert_ok test "$?" -eq 0
+
+source "$REPO_ROOT/lib/state.sh"
+
+# list parsing strips comments/blanks
+entries=$(list_entries "$REPO_ROOT/data/debloat-bluetooth.list")
+assert_contains "$entries" "bluez|Bluetooth stack|off"
+assert_eq "$(echo "$entries" | grep -c '^#')" "0"
+
+# selections
+state_set "debloat/bluez" on
+assert_eq "$(state_get debloat/bluez)" "on"
+assert_eq "$(state_get missing/key)" "off"
+assert_ok state_on debloat/bluez
+assert_fail state_on missing/key
+
+# denylist blocks criticals incl. globs
+assert_ok denylisted manjaro-keyring
+assert_ok denylisted mhwd-nvidia-580xx
+assert_ok denylisted linux-lts
+assert_fail denylisted manjaro-hello
+
+# profile round-trip
+pf=$(mktemp)
+profile_save "$pf"
+unset SELECTIONS; declare -gA SELECTIONS
+profile_load "$pf"
+assert_eq "$(state_get debloat/bluez)" "on"
+rm -f "$pf"

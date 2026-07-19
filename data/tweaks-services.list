@@ -1,0 +1,5 @@
+enable:NetworkManager.service|Network management on boot|on
+enable:fstrim.timer|Weekly SSD TRIM|on
+disable:cups.service|Stop print server autostart|off
+disable:bluetooth.service|Stop bluetooth autostart|off
+enable:ufw.service|Firewall (default deny)|off

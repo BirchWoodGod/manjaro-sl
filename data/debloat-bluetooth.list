@@ -1,0 +1,6 @@
+bluez|Bluetooth stack|off
+bluez-utils|Bluetooth CLI tools|off
+blueman|Bluetooth manager (GTK)|off
+bluedevil|Bluetooth (KDE)|off
+pulseaudio-bluetooth|PA Bluetooth module|off
+blueberry|Bluetooth (Cinnamon)|off

@@ -1,0 +1,12 @@
+feh|Image viewer / wallpaper setter|on
+meson|Build system (j4-dmenu-desktop)|on
+fastfetch|System info|on
+htop|Process viewer|on
+nano|Text editor|on
+networkmanager|Network management|on
+network-manager-applet|Tray applet|on
+tldr|Simplified man pages|on
+brightnessctl|Backlight control|on
+alsa-utils|Audio mixer/controls|on
+firefox|Web browser|on
+net-tools|ifconfig etc.|on

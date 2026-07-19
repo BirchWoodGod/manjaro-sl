@@ -1,0 +1,12 @@
+base-devel|Compiler toolchain|on
+libx11|X11 client library|on
+libxft|X FreeType interface|on
+libxinerama|Multi-monitor support|on
+freetype2|Font rendering|on
+fontconfig|Font configuration|on
+pkgconf|Build configuration|on
+python|Used by config editors|on
+libnewt|whiptail TUI|on
+xorg|X.Org display server (group)|on
+xorg-xinit|startx / xinit|on
+ly|TUI display manager|on
