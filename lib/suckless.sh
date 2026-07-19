@@ -22,9 +22,21 @@ clean_build_artifacts() {
     "${REPO_ROOT}/st/st"
     "${REPO_ROOT}/slstatus/slstatus"
     "${REPO_ROOT}/dmenu/j4-dmenu-desktop/j4-dmenu-desktop"
-    "${REPO_ROOT}/doomfire/doomfire"
-    "${REPO_ROOT}/xmatrix/xmatrix"
   )
+  # lib/wallpaper.sh is sourced after lib/suckless.sh in some legacy call
+  # orders, so available_wallpapers may not exist yet at source time — this
+  # function only runs at apply time (after all sourcing), but guard anyway
+  # and fall back to the pre-registry doomfire/xmatrix pair.
+  local wallpaper_components
+  if declare -F available_wallpapers >/dev/null; then
+    wallpaper_components=$(available_wallpapers)
+  else
+    wallpaper_components=$'doomfire\nxmatrix'
+  fi
+  local w
+  while IFS= read -r w; do
+    [ -n "$w" ] && binaries+=("${REPO_ROOT}/${w}/${w}")
+  done <<< "$wallpaper_components"
 
   for binary in "${binaries[@]}"; do
     if [ -f "$binary" ]; then
@@ -34,7 +46,10 @@ clean_build_artifacts() {
   done
 
   # Remove object files from component directories
-  local components=("dwm" "dmenu" "st" "slstatus" "doomfire" "xmatrix")
+  local components=("dwm" "dmenu" "st" "slstatus")
+  while IFS= read -r w; do
+    [ -n "$w" ] && components+=("$w")
+  done <<< "$wallpaper_components"
   for component in "${components[@]}"; do
     local component_dir="${REPO_ROOT}/${component}"
     if [ -d "$component_dir" ]; then

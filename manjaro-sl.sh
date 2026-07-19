@@ -214,15 +214,18 @@ desktop_setup_menu() {
       battery "slstatus battery widget" back "Back") || return 0
     case "$pick" in
       components)
-        local -a comps=(dwm dmenu st slstatus doomfire xmatrix)
+        local -a comps=(dwm dmenu st slstatus)
         local -A descs=(
           [dwm]="Window manager"
           [dmenu]="Program launcher"
           [st]="Terminal emulator"
           [slstatus]="Status bar"
-          [doomfire]="DOOM fire X11 wallpaper animation"
-          [xmatrix]="Matrix rain X11 wallpaper animation"
         )
+        local w
+        while IFS= read -r w; do
+          comps+=("$w")
+          descs[$w]="${WALLPAPER_DESCS[$w]}"
+        done < <(available_wallpapers)
         local -a args=()
         local c state
         for c in "${comps[@]}"; do
@@ -284,12 +287,10 @@ declare -gA WALLPAPER_IMPLIED=()
 select_wallpaper() {
   local wp="$1"
   state_set dwm/wallpaper "$wp"
-  case "$wp" in
-    doomfire|xmatrix)
-      state_set "component/$wp" on
-      WALLPAPER_IMPLIED["component/$wp"]=1
-      ;;
-  esac
+  if is_known_wallpaper "$wp"; then
+    state_set "component/$wp" on
+    WALLPAPER_IMPLIED["component/$wp"]=1
+  fi
 }
 
 # Loops a tui_menu over appearance settings: a unified animation picker that
@@ -364,10 +365,13 @@ appearance_menu() {
         fi
         local curw selw
         curw=$(state_get dwm/wallpaper); [ "$curw" = off ] && curw=none
+        local -a wp_args=(none "None" "$([ "$curw" = none ] && echo on || echo off)")
+        local w
+        while IFS= read -r w; do
+          wp_args+=("$w" "${WALLPAPER_DESCS[$w]}" "$([ "$curw" = "$w" ] && echo on || echo off)")
+        done < <(available_wallpapers)
         selw=$(tui_radiolist "Desktop wallpaper" "Choose desktop wallpaper animation" \
-          none     "None"      "$([ "$curw" = none ] && echo on || echo off)" \
-          doomfire "DOOM fire" "$([ "$curw" = doomfire ] && echo on || echo off)" \
-          xmatrix  "Matrix rain" "$([ "$curw" = xmatrix ] && echo on || echo off)") || continue
+          "${wp_args[@]}") || continue
         select_wallpaper "$selw"
         state_set ly/match_wallpaper off
         ;;
@@ -468,10 +472,11 @@ detect_existing_setup() {
     # xinitrc block predates wallpaper.sh writing a launcher script).
     local wp
     wp=$(sed -n 's/^exec //p' "$HOME/.config/manjaro-sl/wallpaper.sh" 2>/dev/null | head -n1 || true)
-    case "$wp" in
-      doomfire|xmatrix) state_set dwm/wallpaper "$wp" ;;
-      *)                state_set dwm/wallpaper doomfire ;;
-    esac
+    if is_known_wallpaper "$wp"; then
+      state_set dwm/wallpaper "$wp"
+    else
+      state_set dwm/wallpaper doomfire
+    fi
   else
     state_set dwm/wallpaper none
   fi
@@ -793,10 +798,12 @@ parse_args() {
         ;;
       --wallpaper)
         [ $# -ge 2 ] || { echo "Error: --wallpaper requires a value." >&2; exit 1; }
-        case "$2" in
-          none|doomfire|xmatrix) select_wallpaper "$2" ;;
-          *) echo "Error: --wallpaper must be 'none', 'doomfire', or 'xmatrix'." >&2; exit 1 ;;
-        esac
+        if [ "$2" = none ] || { is_known_wallpaper "$2" && [ -d "$REPO_ROOT/$2" ]; }; then
+          select_wallpaper "$2"
+        else
+          echo "Error: --wallpaper must be 'none', $(available_wallpapers | tr '\n' ' ')." >&2
+          exit 1
+        fi
         shift
         ;;
       --interface)
@@ -891,13 +898,15 @@ parse_args() {
   # consistent with the left-to-right-then-positionals rule documented in
   # usage(): later selections win.
   if [ ${#POSITIONAL_COMPONENTS[@]} -gt 0 ]; then
-    local -a valid_comps=(dwm dmenu st slstatus doomfire xmatrix)
+    local -a valid_comps=(dwm dmenu st slstatus)
+    local w
+    while IFS= read -r w; do valid_comps+=("$w"); done < <(available_wallpapers)
     local pc c ok
     for pc in "${POSITIONAL_COMPONENTS[@]}"; do
       ok=0
       for c in "${valid_comps[@]}"; do [ "$c" = "$pc" ] && { ok=1; break; }; done
       if [ "$ok" -eq 0 ]; then
-        echo "Unknown component: $pc (valid: dwm dmenu st slstatus doomfire xmatrix)" >&2
+        echo "Unknown component: $pc (valid: ${valid_comps[*]})" >&2
         exit 1
       fi
     done

@@ -5,6 +5,36 @@
 WP_BLOCK_START="# >>> manjaro-sl wallpaper >>>"
 WP_BLOCK_END="# <<< manjaro-sl wallpaper <<<"
 
+# Single source of truth for desktop wallpapers. A registry entry may exist
+# before its program ships — consumers gate on available_wallpapers (directory
+# exists) so unbuilt names never surface in menus or validation.
+KNOWN_WALLPAPERS=(doomfire xmatrix xcolormix xgameoflife xblackhole
+                  xstarfield xplasma xrain xfireflies)
+declare -gA WALLPAPER_DESCS=(
+  [doomfire]="DOOM fire X11 wallpaper animation"
+  [xmatrix]="Matrix rain X11 wallpaper animation"
+  [xcolormix]="Shifting color gradients wallpaper animation"
+  [xgameoflife]="Conway's Game of Life wallpaper animation"
+  [xblackhole]="Black hole accretion-disk wallpaper animation"
+  [xstarfield]="Flying starfield wallpaper animation"
+  [xplasma]="Demoscene plasma wallpaper animation"
+  [xrain]="Falling rain wallpaper animation"
+  [xfireflies]="Drifting fireflies wallpaper animation"
+)
+
+is_known_wallpaper() {
+  local w
+  for w in "${KNOWN_WALLPAPERS[@]}"; do [ "$w" = "$1" ] && return 0; done
+  return 1
+}
+
+available_wallpapers() {
+  local w
+  for w in "${KNOWN_WALLPAPERS[@]}"; do
+    [ -d "$REPO_ROOT/$w" ] && echo "$w"
+  done
+}
+
 ly_animation_to_wallpaper() {
   case "$1" in
     doom)   echo doomfire ;;

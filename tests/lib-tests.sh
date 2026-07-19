@@ -237,6 +237,18 @@ assert_eq "$(grep -c 'manjaro-sl wallpaper >>>' "$HOME/.xinitrc")" "1"
 
 HOME=$OLD_HOME
 
+# wallpaper registry
+assert_ok is_known_wallpaper doomfire
+assert_ok is_known_wallpaper xblackhole
+assert_fail is_known_wallpaper spinningcube
+# available = registry ∩ existing dirs; right now only doomfire+xmatrix exist
+avail=$(available_wallpapers | tr '\n' ' ')
+assert_eq "$avail" "doomfire xmatrix "
+# every registry member has a description
+for w in "${KNOWN_WALLPAPERS[@]}"; do
+  assert_ok test -n "${WALLPAPER_DESCS[$w]:-}"
+done
+
 # --wallpaper flag accepts xmatrix (usage() advertises it) and still
 # rejects unknown values
 t_home=$(mktemp -d); t_state=$(mktemp -d)
