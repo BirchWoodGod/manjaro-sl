@@ -42,6 +42,7 @@ wallpaper_wire_xinitrc() {
     awk -v blk="$block" '!done && /^exec .*dwm/ { print blk; done=1 } { print }' \
       "$xi" > "$xi.tmp" && mv "$xi.tmp" "$xi"
   else
+    [ -s "$xi" ] && [ -n "$(tail -c1 "$xi")" ] && printf '\n' >> "$xi"
     printf '%s\n' "$block" >> "$xi"
   fi
 }

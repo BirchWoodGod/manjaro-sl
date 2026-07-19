@@ -144,6 +144,15 @@ state_set dwm/wallpaper none
 wallpaper_apply
 assert_eq "$(grep -c 'manjaro-sl wallpaper' "$HOME/.xinitrc" || true)" "0"
 
+# append branch: file without trailing newline and without exec dwm must stay idempotent
+declare -gA SELECTIONS=()
+state_set dwm/wallpaper doomfire
+printf 'exec bash' > "$HOME/.xinitrc"     # no trailing newline, no dwm line
+wallpaper_apply
+wallpaper_apply
+assert_eq "$(grep -c 'manjaro-sl wallpaper >>>' "$HOME/.xinitrc")" "1"
+assert_contains "$(head -n1 "$HOME/.xinitrc")" "exec bash"
+
 assert_eq "$(ly_animation_to_wallpaper doom)" "doomfire"
 assert_eq "$(ly_animation_to_wallpaper matrix)" "none"
 
