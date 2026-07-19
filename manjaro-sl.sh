@@ -127,6 +127,30 @@ section_enabled() {
   return 1
 }
 
+# N2: old build_suckless.sh only ran Ly configuration when dwm was among the
+# selected components — a display manager for a WM you didn't build makes
+# little sense, and legacy per-component invocations like `./build_suckless.sh
+# st -y` must remain a plain st rebuild, not a side-effecting boot-behavior
+# change (ly/enable unset defaults to "enable Ly" — see preview_text's N1
+# comment and lib/ly.sh's C2 gate). Restore that gate here: the Ly step in
+# apply_all runs only when component/dwm is selected, OR ly/enable was
+# EXPLICITLY turned on (opt-in even without rebuilding dwm — e.g. someone
+# revisiting just the Ly menu), OR the user explicitly passed `--only ly`.
+# That last case composes with section_enabled: section_enabled ly already
+# gates out the Ly step entirely unless --only was unused or included "ly",
+# so by the time this function runs we know --only ly (if used at all) is
+# consistent; here we additionally treat --only ly itself as the opt-in
+# signal so asking for exactly the Ly section still reaches the step even
+# when dwm isn't selected (otherwise --only ly would silently do nothing on
+# a non-dwm run instead of configuring Ly as asked).
+ly_step_should_run() {
+  state_on "component/dwm" && return 0
+  { [ -n "${SELECTIONS[ly/enable]+x}" ] && state_on ly/enable; } && return 0
+  local s
+  for s in "${ONLY_SECTIONS[@]}"; do [ "$s" = "ly" ] && return 0; done
+  return 1
+}
+
 sanity_checks() {
   command -v pacman >/dev/null || { echo "pacman not found — Arch-based distro required." >&2; exit 1; }
   if [ "${EUID:-$(id -u)}" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
@@ -413,7 +437,21 @@ preview_text() {
   out+="WALLPAPER:\n  ${wp}\n\n"
 
   local ly_anim; ly_anim=$(state_get ly/animation); [ "$ly_anim" = "off" ] && ly_anim="none"
-  out+="LY:\n  enable=$(state_get ly/enable) animation=${ly_anim} match_wallpaper=$(state_get ly/match_wallpaper)\n\n"
+
+  # N1: state_get can't distinguish "never set" from "explicitly off" (both
+  # read as "off"), but apply behaves differently for the two — unset
+  # ly/enable still enables Ly (legacy build_suckless.sh behavior; see
+  # ly_step_should_run/configure_ly_display_manager's C2 comment), while an
+  # explicit off skips it. Mirror that here with the same
+  # ${SELECTIONS[ly/enable]+x} set-check lib/ly.sh's C2 gate uses, so the
+  # preview doesn't lie about what apply will actually do.
+  local ly_enable_display
+  if [ -n "${SELECTIONS[ly/enable]+x}" ]; then
+    ly_enable_display=$(state_get ly/enable)
+  else
+    ly_enable_display="on (default)"
+  fi
+  out+="LY:\n  enable=${ly_enable_display} animation=${ly_anim} match_wallpaper=$(state_get ly/match_wallpaper)\n\n"
 
   # FILES reflects the same effective xinitrc/dwm.desktop copy defaults
   # apply_configuration will use (I3: -y/LEGACY_Y defaults both to "no",
@@ -558,8 +596,11 @@ wallpaper_apply_maybe() {
 
 # Fixed order: debloat → tweaks → install → build → configure → ly →
 # wallpaper → summary, each via run_step so failures offer continue/abort.
-# Each step is additionally gated by section_enabled (see --only) and the
-# install step by SKIP_PACKAGES (see --skip-packages).
+# Each step is additionally gated by section_enabled (see --only), the
+# install step by SKIP_PACKAGES (see --skip-packages), and the Ly step
+# additionally by ly_step_should_run (see N2 comment above) so a bare
+# per-component rebuild that doesn't include dwm doesn't also flip the
+# system's display manager.
 apply_all() {
   ACCEPT_DEFAULTS=1
   sync_ly_wallpaper
@@ -570,7 +611,7 @@ apply_all() {
     run_step "Build components" build_selected_components_maybe
   fi
   section_enabled dwm && run_step "Configure" apply_configuration_maybe
-  section_enabled ly  && run_step "Ly"        configure_ly_display_manager_maybe
+  section_enabled ly && ly_step_should_run && run_step "Ly" configure_ly_display_manager_maybe
   section_enabled dwm && run_step "Wallpaper" wallpaper_apply_maybe
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] skipping profile save"

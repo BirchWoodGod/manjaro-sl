@@ -717,3 +717,52 @@ assert_contains "$build_line" "dmenu"
 assert_contains "$build_line" "st"
 assert_contains "$build_line" "slstatus"
 rm -rf "$t_home" "$t_state"
+
+# --- N1/N2 follow-up review fixes ----------------------------------------
+
+# N2: a legacy per-component invocation that doesn't include dwm (`st
+# -y --dry-run`, forwarded verbatim from build_suckless.sh) must NOT reach
+# the Ly step — ly/enable is unset, which apply treats as "enable Ly" (see
+# N1 below), so running the step here would flip the system's display
+# manager as a side effect of a plain st rebuild. The Ly step only ever
+# prints something (its "==> Ly" run_step header, or under --dry-run the
+# "[dry-run] skipping Ly" note printed instead of the real step) when it
+# actually executes — apply_all's other gated steps that don't run print
+# nothing at all — so absence of "==> Ly" is the correct "step did not run"
+# assertion (not "no enable text", which would also spuriously pass if the
+# step ran but happened not to enable anything).
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  st -y --dry-run 2>&1); rc=$?
+assert_eq "$rc" "0"
+assert_eq "$(echo "$out" | grep -c '==> Ly')" "0"
+rm -rf "$t_home" "$t_state"
+
+# N2 counterpart: a bare/legacy run with no positional component names seeds
+# the default component set (dwm dmenu st slstatus — see C1 above), so it
+# DOES include dwm and must still reach the Ly step as before.
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  -y --dry-run 2>&1); rc=$?
+assert_eq "$rc" "0"
+assert_contains "$out" "[dry-run] skipping Ly"
+rm -rf "$t_home" "$t_state"
+
+# N1: preview_text must not claim ly/enable is "off" when it was never set —
+# apply's actual behavior for unset ly/enable is to enable Ly (legacy
+# build_suckless.sh parity; see lib/ly.sh's C2 gate), so the preview should
+# say so instead of implying apply will leave Ly disabled.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  preview_text
+')
+assert_contains "$out" "enable=on (default)"
+
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  state_set ly/enable off
+  preview_text
+')
+assert_contains "$out" "enable=off"
