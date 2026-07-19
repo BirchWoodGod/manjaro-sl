@@ -361,7 +361,7 @@ appearance_menu() {
         fi
         ;;
       wallpaper)
-        local curw selw effective
+        local selw effective
         # Pre-select: "match" when match_wallpaper is on or unset; else the
         # current override value.
         if [ -z "${SELECTIONS[ly/match_wallpaper]+x}" ] || state_on ly/match_wallpaper; then
