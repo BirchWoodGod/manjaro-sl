@@ -19,7 +19,7 @@ Usage: ./manjaro-sl.sh [options] [component...]
 
 With no options, launches the interactive whiptail TUI for debloating
 Manjaro and installing dwm/suckless tools (dwm, dmenu, st, slstatus,
-doomfire) with a Ly display manager.
+doomfire, xmatrix) with a Ly display manager.
 
 With any options, flags are processed left-to-right and build up the same
 selection state the TUI edits; pass --apply (or -y) to apply it
@@ -28,7 +28,7 @@ order, --preset NAME bulk-sets selections at the point it's parsed, so
 any --enable-*/--disable-* (or other) flags placed AFTER it on the command
 line override what the preset chose; flags placed before a --preset get
 overridden by it instead. Bare component names (dwm, dmenu, st, slstatus,
-doomfire — legacy build_suckless.sh muscle memory, e.g. `./manjaro-sl.sh
+doomfire, xmatrix — legacy build_suckless.sh muscle memory, e.g. `./manjaro-sl.sh
 st`) are applied last, after any --preset, and select only the named
 component(s) for building, overriding whatever components the preset chose.
 
@@ -43,7 +43,7 @@ Options:
   --only SECTION            Restrict --apply to one section (repeatable):
                             install|debloat|tweaks|dwm|ly
   --profile FILE            Load previously saved selections from FILE
-  --wallpaper WP            Set dwm wallpaper animation: 'none' or 'doomfire'
+  --wallpaper WP            Set dwm wallpaper animation: 'none', 'doomfire', or 'xmatrix'
   --enable-SLUG             Turn on a debloat/install entry by package name
   --disable-SLUG            Turn off a debloat/install entry by package name
   --interface IFACE         Set slstatus network interface
@@ -171,15 +171,16 @@ sanity_checks() {
 }
 
 # Checklist of components from DEFAULT_COMPONENTS (dwm dmenu st slstatus)
-# plus doomfire → SELECTIONS[component/*].
+# plus doomfire/xmatrix → SELECTIONS[component/*].
 install_screen() {
-  local -a comps=(dwm dmenu st slstatus doomfire)
+  local -a comps=(dwm dmenu st slstatus doomfire xmatrix)
   local -A descs=(
     [dwm]="Window manager"
     [dmenu]="Program launcher"
     [st]="Terminal emulator"
     [slstatus]="Status bar"
     [doomfire]="DOOM fire X11 wallpaper animation"
+    [xmatrix]="Matrix rain X11 wallpaper animation"
   )
   local -a args=()
   local c state
@@ -782,13 +783,13 @@ parse_args() {
   # consistent with the left-to-right-then-positionals rule documented in
   # usage(): later selections win.
   if [ ${#POSITIONAL_COMPONENTS[@]} -gt 0 ]; then
-    local -a valid_comps=(dwm dmenu st slstatus doomfire)
+    local -a valid_comps=(dwm dmenu st slstatus doomfire xmatrix)
     local pc c ok
     for pc in "${POSITIONAL_COMPONENTS[@]}"; do
       ok=0
       for c in "${valid_comps[@]}"; do [ "$c" = "$pc" ] && { ok=1; break; }; done
       if [ "$ok" -eq 0 ]; then
-        echo "Unknown component: $pc (valid: dwm dmenu st slstatus doomfire)" >&2
+        echo "Unknown component: $pc (valid: dwm dmenu st slstatus doomfire xmatrix)" >&2
         exit 1
       fi
     done

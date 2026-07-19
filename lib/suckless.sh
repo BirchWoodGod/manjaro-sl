@@ -23,6 +23,7 @@ clean_build_artifacts() {
     "${REPO_ROOT}/slstatus/slstatus"
     "${REPO_ROOT}/dmenu/j4-dmenu-desktop/j4-dmenu-desktop"
     "${REPO_ROOT}/doomfire/doomfire"
+    "${REPO_ROOT}/xmatrix/xmatrix"
   )
 
   for binary in "${binaries[@]}"; do
@@ -33,7 +34,7 @@ clean_build_artifacts() {
   done
 
   # Remove object files from component directories
-  local components=("dwm" "dmenu" "st" "slstatus" "doomfire")
+  local components=("dwm" "dmenu" "st" "slstatus" "doomfire" "xmatrix")
   for component in "${components[@]}"; do
     local component_dir="${REPO_ROOT}/${component}"
     if [ -d "$component_dir" ]; then

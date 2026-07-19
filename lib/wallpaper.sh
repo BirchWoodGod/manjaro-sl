@@ -7,8 +7,9 @@ WP_BLOCK_END="# <<< manjaro-sl wallpaper <<<"
 
 ly_animation_to_wallpaper() {
   case "$1" in
-    doom) echo doomfire ;;
-    *)    echo none ;;   # matrix/colormix are phase 2
+    doom)   echo doomfire ;;
+    matrix) echo xmatrix ;;
+    *)      echo none ;;   # colormix is phase 2
   esac
 }
 

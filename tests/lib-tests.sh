@@ -223,7 +223,8 @@ assert_eq "$(grep -c 'manjaro-sl wallpaper >>>' "$HOME/.xinitrc")" "1"
 assert_contains "$(head -n1 "$HOME/.xinitrc")" "exec bash"
 
 assert_eq "$(ly_animation_to_wallpaper doom)" "doomfire"
-assert_eq "$(ly_animation_to_wallpaper matrix)" "none"
+assert_eq "$(ly_animation_to_wallpaper matrix)" "xmatrix"
+assert_eq "$(ly_animation_to_wallpaper colormix)" "none"
 
 # regression: the awk insert-before-exec-dwm path must preserve the execute
 # bit — Ly runs ~/.xinitrc as a program, so dropping +x locks the user out
@@ -664,6 +665,15 @@ assert_eq "$rc" "0"
 build_line=$(echo "$out" | grep 'skipping Build components' || true)
 assert_contains "$build_line" "selected: st"
 assert_eq "$(echo "$build_line" | grep -c 'dwm')" "0"
+rm -rf "$t_home" "$t_state"
+
+# xmatrix is a valid positional component (sandboxed HOME/XDG_STATE_HOME, --dry-run)
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  xmatrix --dry-run --apply --skip-packages 2>&1); rc=$?
+assert_eq "$rc" "0"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "selected: xmatrix"
 rm -rf "$t_home" "$t_state"
 
 # 2. Unknown positional component name must error out clearly.
