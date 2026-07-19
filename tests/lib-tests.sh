@@ -66,3 +66,21 @@ unset SELECTIONS; declare -gA SELECTIONS
 profile_load "$pf"
 assert_eq "$(state_get debloat/bluez)" "on"
 rm -f "$pf"
+
+source "$REPO_ROOT/lib/tui.sh"
+TUI_ACTIVE=0   # force fallback path for tests
+
+out=$(tui_menu "T" "Pick" a "Alpha" b "Beta" <<< "2")
+assert_eq "$out" "b"
+
+out=$(tui_radiolist "T" "Pick" x "Xray" off y "Yankee" on <<< "")
+assert_eq "$out" "y"   # empty input keeps default
+
+out=$(tui_checklist "T" "Pick" p "Pkg1" on q "Pkg2" off <<< "")
+assert_eq "$out" "p"   # defaults preserved on empty input
+
+assert_ok  tui_yesno "T" "sure?" <<< "y"
+assert_fail tui_yesno "T" "sure?" <<< "n"
+
+out=$(tui_input "T" "Color" "#112233" <<< "")
+assert_eq "$out" "#112233"
