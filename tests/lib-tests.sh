@@ -113,3 +113,12 @@ assert_contains "$out" "REFUSED (denylist): manjaro-keyring"
 assert_contains "$out" "+ sudo pacman -Rns"
 assert_contains "$out" "bluez"
 unset -f pacman
+
+source "$REPO_ROOT/lib/tweaks.sh"
+declare -gA SELECTIONS=()
+state_set "tweak/enable:fstrim.timer" on
+state_set "tweak/disable:cups.service" on
+DRY_RUN=1
+out=$(tweaks_apply)
+assert_contains "$out" "+ sudo systemctl enable fstrim.timer"
+assert_contains "$out" "+ sudo systemctl disable cups.service"
