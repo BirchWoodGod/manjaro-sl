@@ -1368,3 +1368,25 @@ out=$(TUI_ACTIVE=0 bash -c '
 eth9
 ")
 assert_contains "$out" "iface=eth9"
+
+# 6) Coherent default: when the stored value matches NO listed option (stale
+#    interface after hardware change; custom hex not in the presets), the
+#    fallback radiolist must pre-mark "Keep current" with (*) instead of
+#    showing every row unselected. The fallback prints the option rows to
+#    stderr — capture and inspect the keep line.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=([dwm/interface]="eth0-stale")
+  ip() { [ "$1" = "-o" ] && printf "1: lo: <LOOPBACK>\n2: enp14s0: <UP>\n3: wlan0: <UP>\n"; }
+  desktop_setup_menu
+' <<< "4
+" 2>&1)
+assert_contains "$(echo "$out" | grep 'Keep current')" "(*)"
+
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=([dwm/barcolor]="#123456")
+  desktop_setup_menu
+' <<< "3
+" 2>&1)
+assert_contains "$(echo "$out" | grep 'Keep current')" "(*)"

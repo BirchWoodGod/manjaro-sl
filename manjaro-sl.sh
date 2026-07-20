@@ -254,12 +254,16 @@ desktop_setup_menu() {
         cur=$(state_get dwm/barcolor); [ "$cur" = off ] && cur=""
         local shown_cur; shown_cur=$(dwm_current_barcolor)
         local -a c_args=()
-        local p name hex
+        local p name hex matched=0
         for p in "${BAR_PRESETS[@]}"; do
           name=${p%%|*}; hex=${p#*|}
+          if [ "$hex" = "$cur" ]; then matched=1; fi
           c_args+=("$hex" "$name — $hex" "$([ "$hex" = "$cur" ] && echo on || echo off)")
         done
-        c_args+=(custom "Custom hex…" off keep "Keep current (${shown_cur:-unknown})" "$([ -z "$cur" ] && echo on || echo off)")
+        # "Keep current" is the no-change option: pre-select it whenever
+        # nothing else is (empty state, or a custom hex no preset matches),
+        # so the radiolist always shows a coherent default.
+        c_args+=(custom "Custom hex…" off keep "Keep current (${shown_cur:-unknown})" "$([ "$matched" -eq 0 ] && echo on || echo off)")
         sel=$(tui_radiolist "Bar color" "dwm selected-bar background" "${c_args[@]}") || continue
         case "$sel" in
           keep|"") ;;
@@ -285,8 +289,9 @@ desktop_setup_menu() {
         cur=$(state_get dwm/interface); [ "$cur" = off ] && cur=""
         local shown_cur; shown_cur=$(slstatus_current_interface)
         local -a if_args=()
-        local iface
+        local iface matched=0
         while IFS= read -r iface; do
+          if [ "$iface" = "$cur" ]; then matched=1; fi
           if_args+=("$iface" "detected" "$([ "$iface" = "$cur" ] && echo on || echo off)")
         done < <(detect_net_interfaces)
         if [ ${#if_args[@]} -eq 0 ]; then
@@ -294,7 +299,10 @@ desktop_setup_menu() {
           [ -n "$sel" ] && state_set dwm/interface "$sel"
           continue
         fi
-        if_args+=(custom "Custom…" off keep "Keep current (${shown_cur:-unknown})" "$([ -z "$cur" ] && echo on || echo off)")
+        # Same coherent-default rule as the bar-color picker: pre-select
+        # "keep" when the stored value is empty or not among the detected
+        # interfaces (e.g. stale after a hardware change).
+        if_args+=(custom "Custom…" off keep "Keep current (${shown_cur:-unknown})" "$([ "$matched" -eq 0 ] && echo on || echo off)")
         sel=$(tui_radiolist "Network interface" "slstatus netspeed interface" "${if_args[@]}") || continue
         case "$sel" in
           keep|"") ;;
