@@ -1,5 +1,7 @@
 gnome|gnome|off
+gnome-shell|gnome-shell|off
 plasma|plasma|off
+plasma-desktop|plasma-desktop|off
 xfce4|xfce4|off
 cinnamon|cinnamon|off
 mate|mate|off

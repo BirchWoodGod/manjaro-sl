@@ -176,6 +176,23 @@ assert_contains "$out" "+ sudo pacman -Rns"
 assert_contains "$out" "bluez"
 unset -f pacman
 
+# group-aware detection: 'plasma' is a pacman GROUP on Manjaro KDE — Qq
+# fails but Qg succeeds; the entry must be offered. Unknown names: neither
+# works → not offered.
+pacman() {
+  case "$1" in
+    -Qq) [ "$2" = "plasma" ] && return 1; [ "$2" = "bluez" ] && return 0; return 1 ;;
+    -Qg) [ "$2" = "plasma" ] && { echo "plasma plasma-desktop"; return 0; }; return 1 ;;
+    *) command pacman "$@" ;;
+  esac
+}
+out=$(debloat_installed_from "$REPO_ROOT/data/de.list")
+assert_contains "$out" "plasma|"
+out=$(debloat_installed_from "$REPO_ROOT/data/debloat-bluetooth.list")
+assert_contains "$out" "bluez|"
+assert_eq "$(echo "$out" | grep -c blueman)" "0"
+unset -f pacman
+
 # I1: ACCEPT_DEFAULTS=1 (non-interactive -y/--apply runs) must pass
 # --noconfirm to the removal command too, mirroring lib/packages.sh's
 # install path — otherwise pacman -Rns's confirmation prompt blocks forever

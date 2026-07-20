@@ -7,7 +7,7 @@ debloat_installed_from() {
   local line name
   while IFS= read -r line; do
     name=${line%%|*}
-    if pacman -Qq "$name" >/dev/null 2>&1; then
+    if pacman -Qq "$name" >/dev/null 2>&1 || pacman -Qg "$name" >/dev/null 2>&1; then
       echo "$line"
     fi
   done < <(list_entries "$1")
