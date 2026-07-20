@@ -1437,3 +1437,17 @@ assert_contains "$hdr" "2,6,0"
 # frame 2: 2 empty then 2 light-shade color-1:  2,3,1
 assert_contains "$hdr" "2,3,1"
 rm -rf "$d2c_tmp"
+
+# apply order regression: Configure must run BEFORE Build — config.h edits
+# (bar color, modkey, interface) are compiled into the binaries, so building
+# first ships stale settings (found live: green bar color written after dwm
+# was already built with the old color)
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --bar-color "#123456" -y --dry-run 2>&1)
+cfg_line=$(echo "$out" | grep -n 'skipping Configure' | head -1 | cut -d: -f1)
+bld_line=$(echo "$out" | grep -n 'skipping Build components' | head -1 | cut -d: -f1)
+assert_ok test -n "$cfg_line"
+assert_ok test -n "$bld_line"
+assert_ok test "$cfg_line" -lt "$bld_line"
+rm -rf "$t_home" "$t_state"

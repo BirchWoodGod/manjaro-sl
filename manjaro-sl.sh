@@ -781,11 +781,14 @@ apply_all() {
   sync_ly_wallpaper
   section_enabled debloat && run_step "Debloat"           debloat_apply
   section_enabled tweaks  && run_step "System tweaks"     tweaks_apply
+  # Configure BEFORE Build: config.h edits (bar color, modkey, interface,
+  # battery) are compiled into the binaries — building first ships stale
+  # settings (the original build_suckless.sh configured first too).
+  section_enabled dwm && run_step "Configure" apply_configuration_maybe
   if section_enabled install; then
     [ "$SKIP_PACKAGES" -eq 0 ] && run_step "Install packages" install_selected_packages
     run_step "Build components" build_selected_components_maybe
   fi
-  section_enabled dwm && run_step "Configure" apply_configuration_maybe
   section_enabled ly && ly_step_should_run && run_step "Ly" configure_ly_display_manager_maybe
   section_enabled dwm && run_step "Wallpaper" wallpaper_apply_maybe
   if [ "$DRY_RUN" -eq 1 ]; then
