@@ -1663,3 +1663,15 @@ assert_eq "$rc" "0"
 assert_contains "$out" "skipping AUR builds"
 assert_fail grep -q '+ curl' <<< "$out"
 rm -rf "$t_home" "$t_state"
+
+# preview_text shows AUR builds (they can take hours — must be visible in
+# the final confirmation) and README documents the drv component
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  state_set aur/cdesktopenv on
+  preview_text
+' 2>/dev/null)
+assert_contains "$out" "AUR BUILDS"
+assert_contains "$out" "cdesktopenv"
+assert_contains "$(cat "$REPO_ROOT/readme.md")" "BryceVandegrift/drv"

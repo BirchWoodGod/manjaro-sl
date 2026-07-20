@@ -52,8 +52,10 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
 
 1. **Desktop Setup** — a single submenu fusing what used to be two separate
    entrances ("Install DWM & suckless tools" and "Configure DWM"): the
-   components checklist (`dwm`, `dmenu`, `st`, `slstatus`, `doomfire`,
-   `xmatrix`), modkey (Super/Alt), bar highlight color (radiolist of 15
+   components checklist (`dwm`, `dmenu`, `st`, `slstatus`, all nine
+   wallpapers, and `drv` — a vendored Douay-Rheims Bible terminal reader,
+   upstream https://github.com/BryceVandegrift/drv, public-domain
+   Unlicense; off by default), modkey (Super/Alt), bar highlight color (radiolist of 15
    Solarized/Nord/Gruvbox presets, plus Custom hex… and Keep current),
    slstatus network interface (radiolist of interfaces detected via `ip`,
    plus Custom… and Keep current — falls back to a plain text box if

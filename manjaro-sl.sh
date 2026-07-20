@@ -598,6 +598,15 @@ preview_text() {
   list=${list% }
   out+="BUILD:\n  ${list:-(none)}\n\n"
 
+  # AUR source builds deserve their own line: they can take hours, so the
+  # user must see them in the final confirmation.
+  list=""
+  for key in "${!SELECTIONS[@]}"; do
+    [[ "$key" == aur/* ]] && [ "${SELECTIONS[$key]}" = on ] && list+="${key#aur/} "
+  done
+  list=${list% }
+  out+="AUR BUILDS (slow, from source):\n  ${list:-(none)}\n\n"
+
   # CONFIGURE covers dwm/* settings other than wallpaper, which gets its own
   # section below (it's applied by wallpaper_apply, not apply_configuration).
   list=""
