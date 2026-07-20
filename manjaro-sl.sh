@@ -252,8 +252,27 @@ desktop_setup_menu() {
       barcolor)
         local cur sel
         cur=$(state_get dwm/barcolor); [ "$cur" = off ] && cur=""
-        sel=$(tui_input "Bar color" "Hex color for the dwm selected bar (e.g. #268bd2); blank = keep current" "$cur") || continue
-        if [ -n "$sel" ]; then state_set dwm/barcolor "$sel"; else state_set dwm/barcolor off; fi
+        local shown_cur; shown_cur=$(dwm_current_barcolor)
+        local -a c_args=()
+        local p name hex
+        for p in "${BAR_PRESETS[@]}"; do
+          name=${p%%|*}; hex=${p#*|}
+          c_args+=("$hex" "$name — $hex" "$([ "$hex" = "$cur" ] && echo on || echo off)")
+        done
+        c_args+=(custom "Custom hex…" off keep "Keep current (${shown_cur:-unknown})" "$([ -z "$cur" ] && echo on || echo off)")
+        sel=$(tui_radiolist "Bar color" "dwm selected-bar background" "${c_args[@]}") || continue
+        case "$sel" in
+          keep|"") ;;
+          custom)
+            sel=$(tui_input "Bar color" "Hex color (#RRGGBB)" "$cur") || continue
+            if [[ "$sel" =~ ^#[0-9a-fA-F]{6}$ ]]; then
+              state_set dwm/barcolor "$sel"
+            elif [ -n "$sel" ]; then
+              tui_msgbox "Bar color" "'$sel' is not a valid #RRGGBB hex color — keeping the previous setting."
+            fi
+            ;;
+          *) state_set dwm/barcolor "$sel" ;;
+        esac
         ;;
       battery)
         local cur chosen
@@ -264,8 +283,27 @@ desktop_setup_menu() {
       interface)
         local cur sel
         cur=$(state_get dwm/interface); [ "$cur" = off ] && cur=""
-        sel=$(tui_input "Network interface" "slstatus netspeed interface; blank = auto-detect" "$cur") || continue
-        if [ -n "$sel" ]; then state_set dwm/interface "$sel"; else state_set dwm/interface off; fi
+        local shown_cur; shown_cur=$(slstatus_current_interface)
+        local -a if_args=()
+        local iface
+        while IFS= read -r iface; do
+          if_args+=("$iface" "detected" "$([ "$iface" = "$cur" ] && echo on || echo off)")
+        done < <(detect_net_interfaces)
+        if [ ${#if_args[@]} -eq 0 ]; then
+          sel=$(tui_input "Network interface" "No interfaces detected; enter one" "$cur") || continue
+          [ -n "$sel" ] && state_set dwm/interface "$sel"
+          continue
+        fi
+        if_args+=(custom "Custom…" off keep "Keep current (${shown_cur:-unknown})" "$([ -z "$cur" ] && echo on || echo off)")
+        sel=$(tui_radiolist "Network interface" "slstatus netspeed interface" "${if_args[@]}") || continue
+        case "$sel" in
+          keep|"") ;;
+          custom)
+            sel=$(tui_input "Network interface" "Interface name" "$cur") || continue
+            [ -n "$sel" ] && state_set dwm/interface "$sel"
+            ;;
+          *) state_set dwm/interface "$sel" ;;
+        esac
         ;;
       back|"") return 0 ;;
     esac

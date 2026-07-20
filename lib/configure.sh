@@ -1,6 +1,66 @@
 #!/usr/bin/env bash
 # Interactive configuration for slstatus, dwm, and misc dotfiles.
 
+# BAR_PRESETS — Solarized/Nord/Gruvbox accent-color presets shared by the
+# legacy interactive prompt (configure_dwm_bar_color) and the Desktop Setup
+# TUI's bar-color radiolist, so the two lists cannot drift apart. Each entry
+# is "Name|#hex"; order matches the legacy numbered menu (1-15).
+BAR_PRESETS=(
+  "Solarized Blue|#268bd2"
+  "Solarized Cyan|#2aa198"
+  "Solarized Green|#859900"
+  "Solarized Yellow|#b58900"
+  "Solarized Orange|#cb4b16"
+  "Solarized Red|#dc322f"
+  "Solarized Magenta|#d33682"
+  "Solarized Violet|#6c71c4"
+  "Nord Blue|#5e81ac"
+  "Nord Red|#bf616a"
+  "Nord Green|#a3be8c"
+  "Nord Yellow|#ebcb8b"
+  "Gruvbox Blue|#458588"
+  "Gruvbox Red|#cc241d"
+  "Gruvbox Green|#98971a"
+)
+
+# detect_net_interfaces — echoes non-loopback network interface names, one
+# per line. Prefers `ip -o link show` (modern systems); falls back to
+# `ifconfig -a` when `ip` is missing; echoes nothing when neither tool is
+# available. Never errors (the trailing `|| true` absorbs grep's "no lines
+# matched" exit status, which would otherwise be this function's own exit
+# status and, under callers running with `set -e`, could look like a
+# failure even though "no interfaces found" is a normal outcome). Shared by
+# the legacy configure_slstatus_interface prompt and the Desktop Setup TUI's
+# interface radiolist so both lists come from the same detection logic.
+detect_net_interfaces() {
+  if command -v ip >/dev/null 2>&1; then
+    ip -o link show | awk -F': ' '{print $2}' | cut -d'@' -f1 | grep -v '^lo$' || true
+  elif command -v ifconfig >/dev/null 2>&1; then
+    ifconfig -a | grep -E '^[a-zA-Z]' | awk '{print $1}' | sed 's/://' | grep -v '^lo$' || true
+  fi
+}
+
+# slstatus_current_interface — echoes the interface currently configured in
+# slstatus/config.h (falling back to config.def.h), or nothing if it can't
+# be read/parsed. Extracted from configure_slstatus_interface so the
+# Desktop Setup TUI can show the same "current value" without duplicating
+# the sed.
+slstatus_current_interface() {
+  local config_file="${REPO_ROOT}/slstatus/config.h"
+  [ -f "$config_file" ] || config_file="${REPO_ROOT}/slstatus/config.def.h"
+  sed -n 's/.*netspeed_rx.*"\([^"]*\)".*/\1/p' "$config_file" 2>/dev/null | head -n1
+}
+
+# dwm_current_barcolor — echoes the col_accent hex currently configured in
+# dwm/config.h (falling back to config.def.h), or nothing if it can't be
+# read/parsed. Extracted from configure_dwm_bar_color for the same reason
+# as slstatus_current_interface above.
+dwm_current_barcolor() {
+  local config_file="${REPO_ROOT}/dwm/config.h"
+  [ -f "$config_file" ] || config_file="${REPO_ROOT}/dwm/config.def.h"
+  sed -n 's/.*col_accent\[\].*= "\([^"]*\)";/\1/p' "$config_file" 2>/dev/null | head -n1
+}
+
 configure_slstatus_interface() {
   local config_file="${REPO_ROOT}/slstatus/config.h"
   # Fallback to config.def.h if config.h doesn't exist
@@ -8,7 +68,7 @@ configure_slstatus_interface() {
     config_file="${REPO_ROOT}/slstatus/config.def.h"
   fi
   local current_iface
-  current_iface=$(sed -n 's/.*netspeed_rx.*"\([^"]*\)".*/\1/p' "$config_file" | head -n1)
+  current_iface=$(slstatus_current_interface)
   current_iface=${current_iface:-unknown}
 
   local chosen_iface="$SLSTATUS_INTERFACE"
@@ -18,20 +78,10 @@ configure_slstatus_interface() {
 
     # Get list of network interfaces
     local interfaces=()
-    if command -v ip >/dev/null 2>&1; then
-      # Use ip command (preferred on modern systems)
-      while read -r iface; do
-        if [ -n "$iface" ] && [[ "$iface" != "lo" ]]; then
-          interfaces+=("$iface")
-        fi
-      done < <(ip -o link show | awk -F': ' '{print $2}' | cut -d'@' -f1 | grep -v '^lo$')
-    elif command -v ifconfig >/dev/null 2>&1; then
-      # Fallback to ifconfig
-      while read -r iface; do
-        if [ -n "$iface" ] && [[ "$iface" != "lo" ]]; then
-          interfaces+=("$iface")
-        fi
-      done < <(ifconfig -a | grep -E '^[a-zA-Z]' | awk '{print $1}' | sed 's/://' | grep -v '^lo$')
+    if command -v ip >/dev/null 2>&1 || command -v ifconfig >/dev/null 2>&1; then
+      while IFS= read -r iface; do
+        interfaces+=("$iface")
+      done < <(detect_net_interfaces)
     else
       echo "Warning: Neither 'ip' nor 'ifconfig' found. Cannot detect network interfaces." >&2
       read -r -p "Enter network interface manually: " chosen_iface || chosen_iface=""
@@ -180,51 +230,28 @@ configure_dwm_bar_color() {
     config_file="${REPO_ROOT}/dwm/config.def.h"
   fi
   local current_color
-  current_color=$(sed -n 's/.*col_accent\[\].*= "\([^"]*\)";/\1/p' "$config_file" | head -n1)
+  current_color=$(dwm_current_barcolor)
   current_color=${current_color:-#000000}
 
   local chosen_color="$BAR_COLOR"
   if [ -z "$chosen_color" ] && [ "$ACCEPT_DEFAULTS" -eq 0 ]; then
     echo
     echo "Choose a color for the dwm selected bar background (current: ${current_color}):"
-    echo "1) Solarized Blue    #268bd2"
-    echo "2) Solarized Cyan    #2aa198"
-    echo "3) Solarized Green   #859900"
-    echo "4) Solarized Yellow  #b58900"
-    echo "5) Solarized Orange  #cb4b16"
-    echo "6) Solarized Red     #dc322f"
-    echo "7) Solarized Magenta #d33682"
-    echo "8) Solarized Violet  #6c71c4"
-    echo "9) Nord Blue         #5e81ac"
-    echo "10) Nord Red         #bf616a"
-    echo "11) Nord Green       #a3be8c"
-    echo "12) Nord Yellow      #ebcb8b"
-    echo "13) Gruvbox Blue     #458588"
-    echo "14) Gruvbox Red      #cc241d"
-    echo "15) Gruvbox Green    #98971a"
-    echo "16) Custom hex color"
-    echo "17) Keep current     ${current_color}"
+    local i=1 p name hex
+    for p in "${BAR_PRESETS[@]}"; do
+      name=${p%%|*}; hex=${p#*|}
+      echo "${i}) ${name} ${hex}"
+      ((i++))
+    done
+    local custom_idx=$i keep_idx=$((i + 1))
+    echo "${custom_idx}) Custom hex color"
+    echo "${keep_idx}) Keep current     ${current_color}"
     echo
 
     while true; do
-      read -r -p "Enter your choice (1-17): " choice || choice=""
-      case "$choice" in
-        1) chosen_color="#268bd2"; break ;;
-        2) chosen_color="#2aa198"; break ;;
-        3) chosen_color="#859900"; break ;;
-        4) chosen_color="#b58900"; break ;;
-        5) chosen_color="#cb4b16"; break ;;
-        6) chosen_color="#dc322f"; break ;;
-        7) chosen_color="#d33682"; break ;;
-        8) chosen_color="#6c71c4"; break ;;
-        9) chosen_color="#5e81ac"; break ;;
-        10) chosen_color="#bf616a"; break ;;
-        11) chosen_color="#a3be8c"; break ;;
-        12) chosen_color="#ebcb8b"; break ;;
-        13) chosen_color="#458588"; break ;;
-        14) chosen_color="#cc241d"; break ;;
-        15) chosen_color="#98971a"; break ;;
-        16)
+      read -r -p "Enter your choice (1-${keep_idx}): " choice || choice=""
+      if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$keep_idx" ]; then
+        if [ "$choice" -eq "$custom_idx" ]; then
           while true; do
             read -r -p "Enter custom hex color (e.g., #ff0000): " custom_color || custom_color=""
             if [[ "$custom_color" =~ ^#[0-9a-fA-F]{6}$ ]]; then
@@ -239,18 +266,20 @@ configure_dwm_bar_color() {
             fi
           done
           break
-          ;;
-        17) chosen_color="$current_color"; break ;;
-        *)
-          if [ -n "$choice" ]; then
-            echo "Invalid choice. Please enter a number between 1-17." >&2
-          else
-            echo "No choice entered, keeping current: ${current_color}" >&2
-            chosen_color="$current_color"
-            break
-          fi
-          ;;
-      esac
+        elif [ "$choice" -eq "$keep_idx" ]; then
+          chosen_color="$current_color"
+          break
+        else
+          chosen_color="${BAR_PRESETS[$((choice - 1))]#*|}"
+          break
+        fi
+      elif [ -n "$choice" ]; then
+        echo "Invalid choice. Please enter a number between 1-${keep_idx}." >&2
+      else
+        echo "No choice entered, keeping current: ${current_color}" >&2
+        chosen_color="$current_color"
+        break
+      fi
     done
   fi
 

@@ -1235,3 +1235,136 @@ help_out=$("$REPO_ROOT/manjaro-sl.sh" --help 2>&1)
 while IFS= read -r w; do
   assert_contains "$help_out" "$w"
 done < <(available_wallpapers)
+
+# --- Detected-interface + preset-color pickers (2026-07-19 design) --------
+
+source "$REPO_ROOT/lib/configure.sh"
+
+# detect_net_interfaces: non-lo interfaces only, one per line, driven off a
+# mocked `ip -o link show` for determinism.
+ip() { [ "$1" = "-o" ] && printf '1: lo: <LOOPBACK>\n2: enp14s0: <UP>\n3: wlan0: <UP>\n'; }
+ifaces=$(detect_net_interfaces | tr '\n' ' ')
+assert_eq "$ifaces" "enp14s0 wlan0 "
+unset -f ip
+
+# BAR_PRESETS: 15 "Name|#RRGGBB" entries, shared by the legacy prompt and
+# the Desktop Setup TUI radiolist so the two lists cannot drift.
+assert_eq "${#BAR_PRESETS[@]}" "15"
+for p in "${BAR_PRESETS[@]}"; do
+  case "$p" in *"|#"??????) ;; *) assert_eq "bad-preset:$p" "name|#RRGGBB" ;; esac
+done
+
+# Legacy/TUI equivalence (source-level): both the legacy prompt and the
+# Desktop Setup TUI cases must read the shared array/helper rather than
+# inline literals, so the lists cannot drift apart.
+configure_bar_fn=$(sed -n '/^configure_dwm_bar_color() {/,/^}/p' "$REPO_ROOT/lib/configure.sh")
+assert_contains "$configure_bar_fn" 'BAR_PRESETS'
+configure_iface_fn=$(sed -n '/^configure_slstatus_interface() {/,/^}/p' "$REPO_ROOT/lib/configure.sh")
+assert_contains "$configure_iface_fn" 'detect_net_interfaces'
+barcolor_case=$(sed -n '/^      barcolor)/,/^        ;;$/p' "$REPO_ROOT/manjaro-sl.sh")
+assert_contains "$barcolor_case" 'BAR_PRESETS'
+interface_case=$(sed -n '/^      interface)/,/^        ;;$/p' "$REPO_ROOT/manjaro-sl.sh")
+assert_contains "$interface_case" 'detect_net_interfaces'
+# The old tui_input hint falsely claimed "blank = auto-detect" (blank
+# actually kept the current value) — the radiolist replacing it must not
+# repeat any auto-detect claim.
+assert_eq "$(echo "$interface_case" | grep -ci 'auto-detect')" "0"
+
+# Desktop Setup tui_menu tag order: components(1) modkey(2) barcolor(3)
+# interface(4) battery(5) back(6). Each block below documents its exact
+# keystroke sequence (TUI_ACTIVE=0 fallback prompts all `read` from fd 0 in
+# sequence, one line per prompt; a trailing EOF after the last
+# state-changing pick makes the outer `while true` re-read hit "back" for
+# free — same pattern as the appearance_menu tests above).
+
+# 1) Interface radiolist: with two detected interfaces (mocked `ip`), the
+#    fallback radiolist tags are enp14s0(1) wlan0(2) custom(3) keep(4).
+#    "4\n2\n" => open Desktop Setup's "interface" item, pick tag 2 (wlan0).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  ip() { [ "$1" = "-o" ] && printf "1: lo: <LOOPBACK>\n2: enp14s0: <UP>\n3: wlan0: <UP>\n"; }
+  desktop_setup_menu
+  echo "iface=$(state_get dwm/interface)"
+' <<< "4
+2
+")
+assert_contains "$out" "iface=wlan0"
+
+# 2) Bar color radiolist: preset tags follow BAR_PRESETS order 1-15, then
+#    custom(16), keep(17). Tag 10 is "Nord Red" (#bf616a).
+#    "3\n10\n" => open "barcolor", pick tag 10.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  desktop_setup_menu
+  echo "color=$(state_get dwm/barcolor)"
+' <<< "3
+10
+")
+assert_contains "$out" "color=#bf616a"
+
+# 3) Bar color custom hex: tag 16 = custom, then the tui_input prompt reads
+#    the hex verbatim. An invalid value ("red") is rejected via msgbox and
+#    leaves dwm/barcolor unset (not just "off" — genuinely never state_set).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  desktop_setup_menu
+  if [ -n "${SELECTIONS[dwm/barcolor]+x}" ]; then echo "set=yes"; else echo "set=no"; fi
+' <<< "3
+16
+red
+" 2>/dev/null)
+assert_contains "$out" "set=no"
+
+# 3b) A valid custom hex is accepted and stored as-is.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  desktop_setup_menu
+  echo "color=$(state_get dwm/barcolor)"
+' <<< "3
+16
+#a1b2c3
+")
+assert_contains "$out" "color=#a1b2c3"
+
+# 4) Keep leaves state genuinely untouched (key absent), for both pickers.
+#    Bar color: tag 17 = keep (last tag after 15 presets + custom).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  desktop_setup_menu
+  if [ -n "${SELECTIONS[dwm/barcolor]+x}" ]; then echo "set=yes"; else echo "set=no"; fi
+' <<< "3
+17
+")
+assert_contains "$out" "set=no"
+
+#    Interface: tag 4 = keep (2 detected ifaces + custom + keep).
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  ip() { [ "$1" = "-o" ] && printf "1: lo: <LOOPBACK>\n2: enp14s0: <UP>\n3: wlan0: <UP>\n"; }
+  desktop_setup_menu
+  if [ -n "${SELECTIONS[dwm/interface]+x}" ]; then echo "set=yes"; else echo "set=no"; fi
+' <<< "4
+4
+")
+assert_contains "$out" "set=no"
+
+# 5) Empty detection (neither `ip` nor `ifconfig` finds anything usable)
+#    falls back to a plain tui_input box instead of the radiolist, with no
+#    false auto-detect claim in its prompt text.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  ip() { :; }
+  ifconfig() { :; }
+  desktop_setup_menu
+  echo "iface=$(state_get dwm/interface)"
+' <<< "4
+eth9
+")
+assert_contains "$out" "iface=eth9"

@@ -53,9 +53,12 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
 1. **Desktop Setup** — a single submenu fusing what used to be two separate
    entrances ("Install DWM & suckless tools" and "Configure DWM"): the
    components checklist (`dwm`, `dmenu`, `st`, `slstatus`, `doomfire`,
-   `xmatrix`), modkey (Super/Alt), bar highlight color (theme presets or
-   custom hex), slstatus network interface (auto-detected), and the battery
-   widget. Wallpaper/animation is not here — it lives in Appearance.
+   `xmatrix`), modkey (Super/Alt), bar highlight color (radiolist of 15
+   Solarized/Nord/Gruvbox presets, plus Custom hex… and Keep current),
+   slstatus network interface (radiolist of interfaces detected via `ip`,
+   plus Custom… and Keep current — falls back to a plain text box if
+   detection finds nothing), and the battery widget. Wallpaper/animation is
+   not here — it lives in Appearance.
 2. **Appearance** — a screen for the Ly login-screen animation, an optional
    desktop wallpaper override, and the "Enable Ly on boot" checkbox (see
    [Appearance](#appearance) below for the full mapping and Custom…/override
