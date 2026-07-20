@@ -3,15 +3,16 @@
 /* frames per second */
 static const int FPS = 24;
 
-/* render buffer, scaled to the screen (smaller = less CPU) */
-static const int BUF_W = 320;
-static const int BUF_H = 180;
+/* render buffer, scaled to the screen (warp math is per-pixel; smaller =
+ * less CPU) */
+static const int BUF_W = 240;
+static const int BUF_H = 135;
 
-/* anchor hues (degrees, 0-360) blended left-to-right across the screen;
- * the whole palette also rotates one full wheel every CYCLE_SEC seconds */
-static const float ANCHORS[] = { 200.0f, 280.0f, 340.0f, 40.0f };
-static const int CYCLE_SEC = 60;
+/* the three mixed colors, 0xRRGGBB — defaults match Ly's colormix
+ * (col1 red, col2 blue, col3 black) */
+static const unsigned long COL1 = 0xff0000;
+static const unsigned long COL2 = 0x0000ff;
+static const unsigned long COL3 = 0x000000;
 
-/* saturation and value, 0..1 */
-static const float SAT = 0.85f;
-static const float VAL = 0.55f;
+/* time step per frame (Ly uses 0.01) */
+static const float TIME_SCALE = 0.01f;

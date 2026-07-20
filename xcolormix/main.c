@@ -1,5 +1,9 @@
-/* xcolormix — slowly shifting color gradients on the X11 root window.
- * Same root-pixmap technique as doomfire. libX11 only, no libm. */
+/* xcolormix — faithful pixel port of Ly's ColorMix animation
+ * (src/animations/ColorMix.zig in fairyglade/ly): a three-iteration UV
+ * feedback warp banded through a 12-entry palette that cycles the three
+ * color pairs at four density levels (the pixel analogue of Ly's block
+ * characters). sin/cos come from an incremental-rotation lookup table and
+ * sqrt from a bit-hack + Newton refinement — libX11 only, no libm. */
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,50 +16,64 @@
 
 #include "config.h"
 
-#define NANCHORS ((int)(sizeof(ANCHORS) / sizeof(ANCHORS[0])))
+#define TABSZ 1024
+#define TABMASK (TABSZ - 1)
+/* cos/sin of 2*pi/1024 as literals — the only "trig" in the program */
+#define STEP_C 0.999981175f
+#define STEP_S 0.006135885f
+#define TWO_PI 6.28318530718f
+#define HALF_PI 1.57079632679f
+/* radians -> table index */
+#define RAD2IDX ((float)TABSZ / TWO_PI)
+
+static float stab[TABSZ];
 
 static volatile sig_atomic_t running = 1;
 static void stop(int sig) { (void)sig; running = 0; }
 
-static float wrap360(float h) {
-    while (h >= 360.0f) h -= 360.0f;
-    while (h < 0.0f) h += 360.0f;
-    return h;
+static void build_sine_table(void) {
+    float s = 0.0f, c = 1.0f;
+    for (int i = 0; i < TABSZ; i++) {
+        stab[i] = s;
+        float ns = s * STEP_C + c * STEP_S;
+        float nc = c * STEP_C - s * STEP_S;
+        s = ns; c = nc;
+    }
 }
 
-/* h in [0,360), s/v in [0,1] -> 0xRRGGBB. Sector algorithm, no libm. */
-static unsigned long hsv_pixel(float h, float s, float v) {
-    float c = v * s;
-    float hp = h / 60.0f;
-    float m2 = hp;                       /* hp mod 2 without fmod */
-    while (m2 >= 2.0f) m2 -= 2.0f;
-    float x = c * (1.0f - (m2 - 1.0f > 0 ? m2 - 1.0f : 1.0f - m2));
-    float r = 0, g = 0, b = 0;
-    if (hp < 1)      { r = c; g = x; }
-    else if (hp < 2) { r = x; g = c; }
-    else if (hp < 3) { g = c; b = x; }
-    else if (hp < 4) { g = x; b = c; }
-    else if (hp < 5) { r = x; b = c; }
-    else             { r = c; b = x; }
-    float m = v - c;
-    unsigned long R = (unsigned long)((r + m) * 255.0f);
-    unsigned long G = (unsigned long)((g + m) * 255.0f);
-    unsigned long B = (unsigned long)((b + m) * 255.0f);
-    return (R << 16) | (G << 8) | B;
+static float sin_t(float a) {
+    int idx = (int)(a * RAD2IDX) % TABSZ;
+    if (idx < 0) idx += TABSZ;
+    return stab[idx];
 }
 
-/* hue at horizontal position u in [0,1): linear blend between anchors */
-static float hue_at(float u) {
-    float seg = u * (NANCHORS - 1);
-    int i = (int)seg;
-    if (i >= NANCHORS - 1) i = NANCHORS - 2;
-    float f = seg - i;
-    float a = ANCHORS[i], b = ANCHORS[i + 1];
-    /* take the short way around the wheel */
-    float d = b - a;
-    if (d > 180.0f) d -= 360.0f;
-    if (d < -180.0f) d += 360.0f;
-    return wrap360(a + d * f);
+static float cos_t(float a) { return sin_t(a + HALF_PI); }
+
+/* bit-hack initial guess + two Newton iterations; plenty for banding */
+static float sqrt_a(float x) {
+    if (x <= 0.0f) return 0.0f;
+    union { float f; unsigned int i; } u;
+    u.f = x;
+    u.i = (u.i >> 1) + 0x1fbd1df5u;
+    float y = u.f;
+    y = 0.5f * (y + x / y);
+    y = 0.5f * (y + x / y);
+    return y;
+}
+
+static float len2(float x, float y) { return sqrt_a(x * x + y * y); }
+
+static float frand(void) { return (float)rand() / (float)RAND_MAX; }
+
+/* mix colB..colA by d in [0,1]: d=1 -> colA (full block), d=0.25 -> mostly
+ * colB (light shade) — the pixel analogue of fg-over-bg block characters */
+static unsigned long mix_px(unsigned long a, unsigned long b, float d) {
+    unsigned long ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+    unsigned long br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+    unsigned long r = (unsigned long)(ar * d + br * (1.0f - d));
+    unsigned long g = (unsigned long)(ag * d + bg * (1.0f - d));
+    unsigned long bl = (unsigned long)(ab * d + bb * (1.0f - d));
+    return (r << 16) | (g << 8) | bl;
 }
 
 int main(int argc, char *argv[]) {
@@ -67,6 +85,25 @@ int main(int argc, char *argv[]) {
     if (!dpy) { fprintf(stderr, "xcolormix: cannot open display\n"); return 1; }
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
+
+    build_sine_table();
+    srand((unsigned)time(NULL));
+    /* per-run pattern variation, matching Ly */
+    float cos_mod = frand() * TWO_PI;
+    float sin_mod = frand() * TWO_PI;
+
+    /* 12-entry palette: (col1,col2) (col2,col3) (col3,col1) x four density
+     * levels — full/dark/medium/light, Ly's █ ▓ ▒ ░ */
+    unsigned long pal[12];
+    {
+        unsigned long pairs[3][2] = {
+            { COL1, COL2 }, { COL2, COL3 }, { COL3, COL1 },
+        };
+        float dens[4] = { 1.0f, 0.75f, 0.5f, 0.25f };
+        for (int p = 0; p < 3; p++)
+            for (int k = 0; k < 4; k++)
+                pal[p * 4 + k] = mix_px(pairs[p][0], pairs[p][1], dens[k]);
+    }
 
     int scr = DefaultScreen(dpy);
     Window root = RootWindow(dpy, scr);
@@ -84,18 +121,32 @@ int main(int argc, char *argv[]) {
 
     Atom prop_root = XInternAtom(dpy, "_XROOTPMAP_ID", False);
     Atom prop_eset = XInternAtom(dpy, "ESETROOT_PMAP_ID", False);
-
     struct timespec tick = {0, 1000000000L / FPS};
-    float t_deg = 0.0f;
-    float step = 360.0f / (float)(CYCLE_SEC * FPS);
+    long frame_no = 0;
 
     while (running && frames != 0) {
+        float t = (float)frame_no * TIME_SCALE;
         for (int y = 0; y < BUF_H; y++) {
-            /* vertical position gently offsets the hue for a diagonal feel */
-            float voff = 30.0f * (float)y / (float)BUF_H;
             for (int x = 0; x < BUF_W; x++) {
-                float h = wrap360(hue_at((float)x / (float)BUF_W) + t_deg + voff);
-                buf[y * BUF_W + x] = hsv_pixel(h, SAT, VAL);
+                /* uv init: pixel adaptation of Ly's cell version — both
+                 * axes normalized by height, x centered and halved to
+                 * match the terminal's 2:1 cell aspect handling */
+                float ux = (float)(2 * x - BUF_W) / (float)(2 * BUF_H);
+                float uy = (float)(2 * y - BUF_H) / (float)BUF_H;
+                float u2x = 0.0f, u2y = 0.0f;
+                for (int i = 0; i < 3; i++) {
+                    float l = len2(ux, uy);
+                    u2x += ux + l;
+                    u2y += uy + l;
+                    ux += 0.5f * cos_t(cos_mod + u2y * 0.2f + t * 0.1f);
+                    uy += 0.5f * sin_t(sin_mod + u2x - t * 0.1f);
+                    float k = 1.0f * cos_t(ux + uy) - sin_t(ux * 0.7f - uy);
+                    ux -= k;
+                    uy -= k;
+                }
+                int idx = (int)(len2(ux, uy) * 5.0f) % 12;
+                if (idx < 0) idx = 0;
+                buf[y * BUF_W + x] = pal[idx];
             }
         }
         for (int y = 0; y < sh; y++) {
@@ -111,7 +162,7 @@ int main(int argc, char *argv[]) {
         XSetWindowBackgroundPixmap(dpy, root, pm);
         XClearWindow(dpy, root);
         XFlush(dpy);
-        t_deg = wrap360(t_deg + step);
+        frame_no++;
         if (frames > 0) frames--;
         nanosleep(&tick, NULL);
     }
