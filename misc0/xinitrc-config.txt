@@ -4,6 +4,10 @@
 #
 # Executed by startx (run your window manager from here)
 
+# Disable DPMS and screen blanking
+xset -dpms
+xset s off
+
 slstatus &
 nm-applet &
 [ -f ~/pictures/wallpaper.jpg ] && feh --bg-scale ~/pictures/wallpaper.jpg &
