@@ -237,8 +237,8 @@ desktop_setup_menu() {
         done
         local chosen
         chosen=$(tui_checklist "Components" "Space toggles, Enter confirms" "${args[@]}") || continue
-        for c in "${comps[@]}"; do state_set "component/$c" off; done
-        local tag; for tag in $chosen; do state_set "component/$tag" on; done
+        for c in "${comps[@]}"; do user_set "component/$c" off; done
+        local tag; for tag in $chosen; do user_set "component/$tag" on; done
         ;;
       modkey)
         local cur sel
@@ -247,7 +247,7 @@ desktop_setup_menu() {
           off   "Keep current (auto-detected)" "$([ "$cur" = off ] && echo on || echo off)" \
           super "Super (Windows/Command key)"  "$([ "$cur" = super ] && echo on || echo off)" \
           alt   "Alt"                          "$([ "$cur" = alt ] && echo on || echo off)") || continue
-        state_set dwm/modkey "$sel"
+        user_set dwm/modkey "$sel"
         ;;
       barcolor)
         local cur sel
@@ -270,19 +270,19 @@ desktop_setup_menu() {
           custom)
             sel=$(tui_input "Bar color" "Hex color (#RRGGBB)" "$cur") || continue
             if [[ "$sel" =~ ^#[0-9a-fA-F]{6}$ ]]; then
-              state_set dwm/barcolor "$sel"
+              user_set dwm/barcolor "$sel"
             elif [ -n "$sel" ]; then
               tui_msgbox "Bar color" "'$sel' is not a valid #RRGGBB hex color — keeping the previous setting."
             fi
             ;;
-          *) state_set dwm/barcolor "$sel" ;;
+          *) user_set dwm/barcolor "$sel" ;;
         esac
         ;;
       battery)
         local cur chosen
         cur=$(state_get dwm/battery)
         chosen=$(tui_checklist "Battery widget" "Space toggles, Enter confirms" battery "Enable slstatus battery widget" "$cur") || continue
-        if [ -n "$chosen" ]; then state_set dwm/battery on; else state_set dwm/battery off; fi
+        if [ -n "$chosen" ]; then user_set dwm/battery on; else user_set dwm/battery off; fi
         ;;
       interface)
         local cur sel
@@ -296,7 +296,7 @@ desktop_setup_menu() {
         done < <(detect_net_interfaces)
         if [ ${#if_args[@]} -eq 0 ]; then
           sel=$(tui_input "Network interface" "No interfaces detected; enter one" "$cur") || continue
-          [ -n "$sel" ] && state_set dwm/interface "$sel"
+          [ -n "$sel" ] && user_set dwm/interface "$sel"
           continue
         fi
         # Same coherent-default rule as the bar-color picker: pre-select
@@ -308,9 +308,9 @@ desktop_setup_menu() {
           keep|"") ;;
           custom)
             sel=$(tui_input "Network interface" "Interface name" "$cur") || continue
-            [ -n "$sel" ] && state_set dwm/interface "$sel"
+            [ -n "$sel" ] && user_set dwm/interface "$sel"
             ;;
-          *) state_set dwm/interface "$sel" ;;
+          *) user_set dwm/interface "$sel" ;;
         esac
         ;;
       back|"") return 0 ;;
@@ -334,10 +334,11 @@ desktop_setup_menu() {
 declare -gA WALLPAPER_IMPLIED=()
 
 select_wallpaper() {
-  local wp="$1"
-  state_set dwm/wallpaper "$wp"
+  local wp="$1" who="${2:-}"
+  local setter=state_set; [ "$who" = user ] && setter=user_set
+  "$setter" dwm/wallpaper "$wp"
   if is_known_wallpaper "$wp"; then
-    state_set "component/$wp" on
+    "$setter" "component/$wp" on
     WALLPAPER_IMPLIED["component/$wp"]=1
   fi
 }
@@ -373,13 +374,13 @@ appearance_menu() {
           # is treated as a cancel rather than storing a blank animation.
           name=$(echo "$name" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
           [ -z "$name" ] && continue
-          state_set ly/animation "$name"
+          user_set ly/animation "$name"
           if [ -n "${SELECTIONS[ly/match_wallpaper]+x}" ] && ! state_on ly/match_wallpaper; then
             : # explicit desktop override active — leave dwm/wallpaper alone
           else
             mapped=$(ly_animation_to_wallpaper "$name")
-            select_wallpaper "$mapped"
-            state_set ly/match_wallpaper on
+            select_wallpaper "$mapped" user
+            user_set ly/match_wallpaper on
             # M4: most custom names have no desktop-wallpaper counterpart, but
             # ly_animation_to_wallpaper still recognizes "doom"/"matrix"/
             # "gameoflife"/"colormix" (all also on the radiolist) and
@@ -393,12 +394,12 @@ appearance_menu() {
             fi
           fi
         else
-          state_set ly/animation "$sel"
+          user_set ly/animation "$sel"
           if [ -n "${SELECTIONS[ly/match_wallpaper]+x}" ] && ! state_on ly/match_wallpaper; then
             : # explicit desktop override active — leave dwm/wallpaper alone
           else
-            select_wallpaper "$(ly_animation_to_wallpaper "$sel")"
-            state_set ly/match_wallpaper on
+            select_wallpaper "$(ly_animation_to_wallpaper "$sel")" user
+            user_set ly/match_wallpaper on
             # Every fixed radiolist entry (doom/matrix/gameoflife/colormix/none)
             # now maps to a real wallpaper or legitimately to "none" — no stub
             # notice needed here. Unmapped names only reach the Custom… branch
@@ -426,11 +427,11 @@ appearance_menu() {
         selw=$(tui_radiolist "Desktop wallpaper" "Override the desktop wallpaper, or keep it matched to the login animation" \
           "${wp_args[@]}") || continue
         if [ "$selw" = match ]; then
-          state_set ly/match_wallpaper on
-          select_wallpaper "$(ly_animation_to_wallpaper "$(state_get ly/animation)")"
+          user_set ly/match_wallpaper on
+          select_wallpaper "$(ly_animation_to_wallpaper "$(state_get ly/animation)")" user
         else
-          select_wallpaper "$selw"
-          state_set ly/match_wallpaper off
+          select_wallpaper "$selw" user
+          user_set ly/match_wallpaper off
         fi
         ;;
       enable)
@@ -443,7 +444,7 @@ appearance_menu() {
         sel=$(tui_radiolist "Ly on boot" "Enable the Ly display manager on boot?" \
           yes "Yes" "$([ "$cur" = on ] && echo on || echo off)" \
           no  "No"  "$([ "$cur" = on ] && echo off || echo on)") || continue
-        state_set ly/enable "$([ "$sel" = yes ] && echo on || echo off)"
+        user_set ly/enable "$([ "$sel" = yes ] && echo on || echo off)"
         ;;
       back|"") return 0 ;;
     esac
@@ -807,7 +808,15 @@ main_menu() {
       appearance) appearance_menu ;;
       debloat)    debloat_menu ;;
       tweaks)     tweaks_screen ;;
-      preset)     local p; p=$(tui_radiolist "Preset" "Choose" recommended "Recommended" on minimal "Minimal" off) && preset_apply "$p" ;;
+      preset)     local p; p=$(tui_radiolist "Preset" "Choose" \
+                    recommended       "Recommended (keeps your changes)"        on \
+                    minimal           "Minimal (keeps your changes)"            off \
+                    reset-recommended "Recommended — overwrite everything"      off \
+                    reset-minimal     "Minimal — overwrite everything"          off) && \
+                    case "$p" in
+                      reset-*) preset_apply "${p#reset-}" reset ;;
+                      recommended|minimal) preset_apply "$p" baseline ;;
+                    esac ;;
       apply)      if tui_yesno "Preview" "$(preview_text)\n\nApply now?"; then apply_all; fi ;;
       quit|"")    break ;;
     esac

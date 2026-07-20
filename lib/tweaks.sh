@@ -11,9 +11,9 @@ tweaks_screen() {
   done < <(list_entries "$REPO_ROOT/data/tweaks-services.list")
   local chosen; chosen=$(tui_checklist "System Tweaks" "Space toggles, Enter confirms" "${args[@]}") || return 0
   while IFS='|' read -r action_unit desc state; do
-    state_set "tweak/$action_unit" off
+    user_set "tweak/$action_unit" off
   done < <(list_entries "$REPO_ROOT/data/tweaks-services.list")
-  local tag; for tag in $chosen; do state_set "tweak/$tag" on; done
+  local tag; for tag in $chosen; do user_set "tweak/$tag" on; done
 }
 
 tweaks_apply() {

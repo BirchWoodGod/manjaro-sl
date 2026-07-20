@@ -30,9 +30,9 @@ debloat_screen() {
   fi
   local chosen; chosen=$(tui_checklist "$category" "Space toggles, Enter confirms" "${args[@]}") || return 0
   # reset every entry in this file to off, then re-mark chosen
-  while IFS='|' read -r name desc state; do state_set "debloat/$name" off; done \
+  while IFS='|' read -r name desc state; do user_set "debloat/$name" off; done \
     < <(debloat_installed_from "$file")
-  local tag; for tag in $chosen; do state_set "debloat/$tag" on; done
+  local tag; for tag in $chosen; do user_set "debloat/$tag" on; done
 }
 
 debloat_collect() {

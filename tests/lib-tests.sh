@@ -108,6 +108,23 @@ assert_eq "$(state_get install/feh)" "off"
 assert_eq "$(state_get dwm/wallpaper)" "none"
 assert_eq "$(state_get component/dwm)" "on"
 
+# presets respect user choices: baseline skips USER_TOUCHED keys, reset
+# overwrites, untouched keys filled in both modes
+unset SELECTIONS USER_TOUCHED; declare -gA SELECTIONS USER_TOUCHED
+user_set dwm/wallpaper xrain
+user_set debloat/manjaro-hello off
+preset_apply recommended baseline
+assert_eq "$(state_get dwm/wallpaper)" "xrain"          # touched: survives
+assert_eq "$(state_get debloat/manjaro-hello)" "off"    # touched: survives
+assert_eq "$(state_get install/feh)" "on"               # untouched: filled
+preset_apply recommended reset
+assert_eq "$(state_get dwm/wallpaper)" "doomfire"       # reset: overwritten
+# omitted mode == reset (CLI compatibility)
+unset SELECTIONS USER_TOUCHED; declare -gA SELECTIONS USER_TOUCHED
+user_set dwm/wallpaper xrain
+preset_apply recommended
+assert_eq "$(state_get dwm/wallpaper)" "doomfire"
+
 source "$REPO_ROOT/lib/tui.sh"
 TUI_ACTIVE=0   # force fallback path for tests
 
@@ -1116,7 +1133,7 @@ assert_eq "$(echo "$out" | grep -c "phase-3")" "0"
 main_menu_block=$(sed -n '/^main_menu() {/,/^}/p' "$REPO_ROOT/manjaro-sl.sh")
 assert_contains "$main_menu_block" 'desktop "Desktop Setup"'
 assert_contains "$main_menu_block" 'appearance "Appearance"'
-assert_eq "$(echo "$main_menu_block" | grep -o ';;' | wc -l)" "7"   # 7 case arms = 7 menu entries
+assert_eq "$(echo "$main_menu_block" | grep -o ';;' | wc -l)" "9"   # 7 menu entries + 2 nested arms (preset)'s reset-*/recommended|minimal case)
 assert_eq "$(grep -c 'Reconfigure' "$REPO_ROOT/manjaro-sl.sh")" "0"
 assert_eq "$(grep -c '"Install DWM' "$REPO_ROOT/manjaro-sl.sh")" "0"
 assert_eq "$(grep -c '"Configure DWM' "$REPO_ROOT/manjaro-sl.sh")" "0"
