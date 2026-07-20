@@ -1,6 +1,26 @@
 #!/usr/bin/env bash
 # Build helpers for the suckless components and j4-dmenu-desktop.
 
+# EXTRA_COMPONENTS — non-suckless, non-wallpaper optional build components
+# that ship a Makefile with clean/install targets compatible with
+# build_components (e.g. vendored drv/). Separate registry from
+# KNOWN_WALLPAPERS/WALLPAPER_DESCS (lib/wallpaper.sh) — extras are not
+# wallpapers — but mirrors its shape and dir-existence gating: a registry
+# entry may exist before its directory ships, so consumers (valid_comps,
+# the Desktop Setup Components checklist, clean_build_artifacts) gate on
+# available_extra_components rather than reading EXTRA_COMPONENTS raw.
+EXTRA_COMPONENTS=(drv)
+declare -gA EXTRA_COMPONENT_DESCS=(
+  [drv]="Douay-Rheims Bible terminal reader"
+)
+
+available_extra_components() {
+  local c
+  for c in "${EXTRA_COMPONENTS[@]}"; do
+    [ -d "$REPO_ROOT/$c" ] && echo "$c"
+  done
+}
+
 component_selected() {
   local target="$1"
   for component in "${COMPONENTS[@]}"; do
@@ -38,6 +58,19 @@ clean_build_artifacts() {
     [ -n "$w" ] && binaries+=("${REPO_ROOT}/${w}/${w}")
   done <<< "$wallpaper_components"
 
+  # Same dir-existence-gated pickup for EXTRA_COMPONENTS (e.g. drv) — same
+  # binary-named-after-its-directory convention as the wallpapers above.
+  local extra_components
+  if declare -F available_extra_components >/dev/null; then
+    extra_components=$(available_extra_components)
+  else
+    extra_components=""
+  fi
+  local e
+  while IFS= read -r e; do
+    [ -n "$e" ] && binaries+=("${REPO_ROOT}/${e}/${e}")
+  done <<< "$extra_components"
+
   for binary in "${binaries[@]}"; do
     if [ -f "$binary" ]; then
       rm -f "$binary"
@@ -50,6 +83,9 @@ clean_build_artifacts() {
   while IFS= read -r w; do
     [ -n "$w" ] && components+=("$w")
   done <<< "$wallpaper_components"
+  while IFS= read -r e; do
+    [ -n "$e" ] && components+=("$e")
+  done <<< "$extra_components"
   for component in "${components[@]}"; do
     local component_dir="${REPO_ROOT}/${component}"
     if [ -d "$component_dir" ]; then

@@ -293,6 +293,18 @@ for w in "${KNOWN_WALLPAPERS[@]}"; do
   assert_ok test -n "${WALLPAPER_DESCS[$w]:-}"
 done
 
+# EXTRA_COMPONENTS registry (lib/suckless.sh) — separate from
+# KNOWN_WALLPAPERS/wallpapers; drv (vendored Douay-Rheims Bible terminal
+# reader) is the first member. Mirrors the wallpaper registry's
+# dir-existence gating (available_extra_components / available_wallpapers).
+source "$REPO_ROOT/lib/suckless.sh"
+in_extra_components=0
+for e in "${EXTRA_COMPONENTS[@]}"; do [ "$e" = "drv" ] && in_extra_components=1; done
+assert_eq "$in_extra_components" "1"
+assert_ok test -n "${EXTRA_COMPONENT_DESCS[drv]:-}"
+extra_avail=$(available_extra_components | tr '\n' ' ')
+assert_eq "$extra_avail" "drv "
+
 # --wallpaper flag accepts xmatrix (usage() advertises it) and still
 # rejects unknown values
 t_home=$(mktemp -d); t_state=$(mktemp -d)
@@ -838,6 +850,16 @@ build_line=$(echo "$out" | grep 'skipping Build components' || true)
 assert_contains "$build_line" "selected: xfireflies"
 rm -rf "$t_home" "$t_state"
 
+# drv (vendored EXTRA_COMPONENTS entry, not a wallpaper) is a valid
+# positional component (sandboxed HOME/XDG_STATE_HOME, --dry-run)
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  drv --dry-run --apply --skip-packages 2>&1); rc=$?
+assert_eq "$rc" "0"
+build_line=$(echo "$out" | grep 'skipping Build components' || true)
+assert_contains "$build_line" "selected: drv"
+rm -rf "$t_home" "$t_state"
+
 # 2. Unknown positional component name must error out clearly.
 out=$(HOME=$(mktemp -d) "$REPO_ROOT/manjaro-sl.sh" notacomponent --dry-run --apply 2>&1); rc=$?
 assert_eq "$rc" "1"
@@ -1269,6 +1291,27 @@ help_out=$("$REPO_ROOT/manjaro-sl.sh" --help 2>&1)
 while IFS= read -r w; do
   assert_contains "$help_out" "$w"
 done < <(available_wallpapers)
+
+# --help must also advertise EXTRA_COMPONENTS (drv) — same stale-help class
+# of regression, distinct registry from wallpapers.
+while IFS= read -r e; do
+  assert_contains "$help_out" "$e"
+done < <(available_extra_components)
+
+# Desktop Setup Components checklist wires EXTRA_COMPONENT_DESCS in like
+# WALLPAPER_DESCS (source-assertion via the TUI_ACTIVE=0 plain-prompt
+# fallback, which echoes each checklist row's description to stderr):
+# "1" opens Components, an empty line at the checklist prompt keeps the
+# current (default off) selection, "6" (Back) exits the Desktop Setup loop.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  desktop_setup_menu
+' <<< "1
+
+6
+" 2>&1)
+assert_contains "$out" "Douay-Rheims Bible terminal reader"
 
 # --- Detected-interface + preset-color pickers (2026-07-19 design) --------
 

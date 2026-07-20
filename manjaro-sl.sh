@@ -20,7 +20,8 @@ Usage: ./manjaro-sl.sh [options] [component...]
 With no options, launches the interactive whiptail TUI for debloating
 Manjaro and installing dwm/suckless tools (dwm, dmenu, st, slstatus,
 doomfire, xmatrix, xcolormix, xgameoflife, xblackhole, xstarfield, xplasma, xrain, xfireflies) with a Ly
-display manager.
+display manager. An optional drv (Douay-Rheims Bible terminal reader)
+component can also be selected; it's off by default in both presets.
 
 With any options, flags are processed left-to-right and build up the same
 selection state the TUI edits; pass --apply (or -y) to apply it
@@ -29,7 +30,7 @@ order, --preset NAME bulk-sets selections at the point it's parsed, so
 any --enable-*/--disable-* (or other) flags placed AFTER it on the command
 line override what the preset chose; flags placed before a --preset get
 overridden by it instead. Bare component names (dwm, dmenu, st, slstatus,
-or any built wallpaper — legacy build_suckless.sh muscle memory, e.g. `./manjaro-sl.sh
+any built wallpaper, or drv — legacy build_suckless.sh muscle memory, e.g. `./manjaro-sl.sh
 st`) are applied last, after any --preset, and select only the named
 component(s) for building, overriding whatever components the preset chose.
 
@@ -229,6 +230,11 @@ desktop_setup_menu() {
           comps+=("$w")
           descs[$w]="${WALLPAPER_DESCS[$w]}"
         done < <(available_wallpapers)
+        local e
+        while IFS= read -r e; do
+          comps+=("$e")
+          descs[$e]="${EXTRA_COMPONENT_DESCS[$e]}"
+        done < <(available_extra_components)
         local -a args=()
         local c state
         for c in "${comps[@]}"; do
@@ -971,6 +977,8 @@ parse_args() {
     local -a valid_comps=(dwm dmenu st slstatus)
     local w
     while IFS= read -r w; do valid_comps+=("$w"); done < <(available_wallpapers)
+    local e
+    while IFS= read -r e; do valid_comps+=("$e"); done < <(available_extra_components)
     local pc c ok
     for pc in "${POSITIONAL_COMPONENTS[@]}"; do
       ok=0
