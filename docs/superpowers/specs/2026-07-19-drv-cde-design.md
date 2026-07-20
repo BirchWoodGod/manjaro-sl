@@ -1,6 +1,6 @@
 # drv Vendoring & CDE Second Session
 
-**Date:** 2026-07-19
+**Date:** 2026-07-19 (amended same day: +§4 preset baseline mode)
 **Status:** Approved by user (brainstorming session)
 
 ## Goals
@@ -68,6 +68,24 @@
   succeeds) → offered; neither → not offered.
 - `data/de.list` additionally gains `plasma-desktop` and `gnome-shell`
   package entries (belt-and-braces for partial installs).
+
+## 4. Presets respect explicit choices (TUI)
+
+- New global `declare -gA USER_TOUCHED` in `lib/state.sh`; a `user_set KEY
+  VAL` wrapper (state_set + USER_TOUCHED[KEY]=1) replaces `state_set` at
+  every INTERACTIVE screen write site (desktop_setup_menu, appearance_menu,
+  debloat/tweaks/aur screens, select_wallpaper when called from menus —
+  simplest rule: manjaro-sl.sh menu code and screen helpers use user_set;
+  presets/CLI/preload keep state_set).
+- `preset_apply PRESET [mode]` gains a `baseline` mode (default from the
+  TUI): every write is skipped when `USER_TOUCHED[key]` is set. `reset`
+  mode = current unconditional behavior.
+- Presets screen: radiolist gains a second section — entries
+  `recommended`/`minimal` (baseline; label notes "keeps your changes") and
+  `reset-recommended`/`reset-minimal` ("overwrite everything").
+- CLI `--preset` behavior unchanged (documented left-to-right rule stays).
+- Tests: touch a key via user_set, apply baseline preset → key survives;
+  reset preset → key overwritten; untouched keys filled in both modes.
 
 ## Non-changes
 
