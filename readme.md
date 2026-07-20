@@ -57,8 +57,9 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
    Solarized/Nord/Gruvbox presets, plus Custom hex… and Keep current),
    slstatus network interface (radiolist of interfaces detected via `ip`,
    plus Custom… and Keep current — falls back to a plain text box if
-   detection finds nothing), and the battery widget. Wallpaper/animation is
-   not here — it lives in Appearance.
+   detection finds nothing), the battery widget, and an **Extra software
+   (AUR)** checklist (see [Extra software (AUR)](#extra-software-aur)
+   below). Wallpaper/animation is not here — it lives in Appearance.
 2. **Appearance** — a screen for the Ly login-screen animation, an optional
    desktop wallpaper override, and the "Enable Ly on boot" checkbox (see
    [Appearance](#appearance) below for the full mapping and Custom…/override
@@ -282,6 +283,48 @@ the directory existing, so future wallpapers are one-directory additions —
 drop in a `<name>/` with the same `config.def.h`/`Makefile`/binary shape and
 register it; no other code changes needed.
 
+### Extra software (AUR)
+
+Desktop Setup's **Extra software (AUR)** item (`data/aur-optional.list`)
+offers one optional package sourced from the Arch User Repository instead
+of the official repos:
+
+- **`cdesktopenv`** — the Common Desktop Environment, registered as a
+  second login session next to dwm in Ly.
+
+This is `manjaro-sl`'s **single sanctioned AUR exception** — everything
+else installs strictly from the official Manjaro/Arch repos. Building from
+the AUR means, honestly: it's **user-maintained** software with no Manjaro
+or Arch vetting, the build is a **from-source `makepkg` compile that can
+take a long time** (CDE especially — it compiles a whole legacy desktop
+stack), and it **can break** on toolchain/library changes with nobody
+obligated to fix it — the same caveats as fetching and running any AUR
+PKGBUILD by hand, because that's exactly what this does.
+
+Enabling `cdesktopenv` fetches
+`https://aur.archlinux.org/cgit/aur.git/snapshot/cdesktopenv.tar.gz` into
+`~/.cache/manjaro-sl/aur/cdesktopenv/`, extracts it, and runs `makepkg -si
+--noconfirm --needed` **as your normal user** — makepkg refuses to run as
+root; `sudo` only runs inside makepkg's own dependency/install steps, same
+as running it by hand. After a successful build, `manjaro-sl` verifies a
+CDE session entry exists under `/usr/share/xsessions/` (the AUR package
+ships its own; a minimal fallback is installed only if it's somehow
+missing), so Ly lists both **dwm** and **CDE** as login sessions. The
+package also ships a `dtlogin.service` unit (CDE's own traditional display
+manager) — `manjaro-sl` never enables it, so Ly stays your display manager.
+
+Watch the name: the AUR package literally named `cde` is an unrelated tool
+(a portable-app packager, formerly "CDEpack") — **not** the Common Desktop
+Environment, which is packaged as `cdesktopenv`. `manjaro-sl` uses the
+correct name throughout; this is called out here because it's an easy
+mistake to make by hand.
+
+Enable it from the TUI (**Desktop Setup → Extra software (AUR)**) or
+non-interactively with `--enable-cdesktopenv`. Under `--dry-run` the fetch/
+extract/build commands are printed but nothing is fetched, extracted, or
+built; `--skip-packages` also skips the AUR-builds step, since it needs
+`base-devel` (installed by the regular Install-packages step) present.
+
 ---
 
 ## Non-Interactive Usage
@@ -312,8 +355,10 @@ Options:
                             wallpaper (doomfire, xmatrix, xcolormix,
                             xgameoflife, xblackhole, xstarfield, xplasma,
                             xrain, xfireflies)
-  --enable-SLUG             Turn on a debloat/install entry by package name
-  --disable-SLUG            Turn off a debloat/install entry by package name
+  --enable-SLUG             Turn on a debloat/install/AUR entry by package
+                            name
+  --disable-SLUG            Turn off a debloat/install/AUR entry by package
+                            name
   --interface IFACE         Set slstatus network interface
   --battery                 Enable the slstatus battery widget
   --no-battery              Disable the slstatus battery widget
