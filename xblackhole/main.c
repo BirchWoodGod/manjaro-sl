@@ -1,7 +1,7 @@
-/* xblackhole — accretion-disk swirl around a central void on the X11 root
- * window. No trig at runtime: per-frame rotation uses the precomputed
- * ROT_C/ROT_S matrix, respawn positions come from rejection sampling, and
- * brightness uses squared radii — libX11 only, no libm. */
+/* xblackhole — plays the ly-community "blackhole-smooth" durdraw loop on
+ * the X11 root window (see ATTRIBUTION). Frames are embedded at build time
+ * by dur2c.py as RLE runs of (density, color) cells; density maps to the
+ * brightness of the cell's xterm-256-derived RGB. libX11 only. */
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,24 +13,10 @@
 #include <X11/Xutil.h>
 
 #include "config.h"
-
-#define NRAMP ((int)(sizeof(RAMP) / sizeof(RAMP[0])))
-
-typedef struct { float x, y; } P;
+#include "frames.h"
 
 static volatile sig_atomic_t running = 1;
 static void stop(int sig) { (void)sig; running = 0; }
-
-static float frand(void) { return (float)rand() / (float)RAND_MAX; }
-
-/* random point with hole_r2 <= x^2+y^2 <= outer_r2 (rejection sampling) */
-static void spawn(P *p, float outer_r, float hole_r2, float outer_r2) {
-    do {
-        p->x = (2.0f * frand() - 1.0f) * outer_r;
-        p->y = (2.0f * frand() - 1.0f) * outer_r;
-    } while (p->x * p->x + p->y * p->y < hole_r2 ||
-             p->x * p->x + p->y * p->y > outer_r2);
-}
 
 int main(int argc, char *argv[]) {
     int frames = -1;
@@ -46,49 +32,54 @@ int main(int argc, char *argv[]) {
     Window root = RootWindow(dpy, scr);
     int sw = DisplayWidth(dpy, scr), sh = DisplayHeight(dpy, scr);
     unsigned depth = (unsigned)DefaultDepth(dpy, scr);
-    float cx = sw / 2.0f, cy = sh / 2.0f;
-    float half = (sw < sh ? sw : sh) / 2.0f;
-    float hole_r = half * HOLE_FRAC;
-    float outer_r = half * 0.95f;
-    float hole_r2 = hole_r * hole_r, outer_r2 = outer_r * outer_r;
 
     Pixmap pm = XCreatePixmap(dpy, root, (unsigned)sw, (unsigned)sh, depth);
     GC gc = XCreateGC(dpy, pm, 0, NULL);
-    P *ps = malloc(sizeof(P) * (size_t)NPARTICLES);
-    if (!ps) { fprintf(stderr, "xblackhole: oom\n"); return 1; }
 
-    srand((unsigned)time(NULL));
-    for (int i = 0; i < NPARTICLES; i++)
-        spawn(&ps[i], outer_r, hole_r2, outer_r2);
+    /* precompute pixel per (color, density): density d scales brightness
+     * d/6, times the global BRIGHTNESS knob */
+    unsigned long px[NCOLORS][7];
+    for (int c = 0; c < NCOLORS; c++) {
+        unsigned long r = (dur_colors[c] >> 16) & 0xff;
+        unsigned long g = (dur_colors[c] >> 8) & 0xff;
+        unsigned long b = dur_colors[c] & 0xff;
+        for (int d = 0; d < 7; d++) {
+            float f = BRIGHTNESS * (float)d / 6.0f;
+            px[c][d] = ((unsigned long)(r * f) << 16) |
+                       ((unsigned long)(g * f) << 8) |
+                       (unsigned long)(b * f);
+        }
+    }
 
     Atom prop_root = XInternAtom(dpy, "_XROOTPMAP_ID", False);
     Atom prop_eset = XInternAtom(dpy, "ESETROOT_PMAP_ID", False);
     struct timespec tick = {0, 1000000000L / FPS};
     unsigned long black = BlackPixel(dpy, scr);
+    int frame_no = 0;
 
     while (running && frames != 0) {
         XSetForeground(dpy, gc, black);
         XFillRectangle(dpy, pm, gc, 0, 0, (unsigned)sw, (unsigned)sh);
-        for (int i = 0; i < NPARTICLES; i++) {
-            float ox = ps[i].x, oy = ps[i].y;
-            /* rotate + decay */
-            ps[i].x = (ox * ROT_C - oy * ROT_S) * DECAY;
-            ps[i].y = (ox * ROT_S + oy * ROT_C) * DECAY;
-            float r2 = ps[i].x * ps[i].x + ps[i].y * ps[i].y;
-            if (r2 < hole_r2) {
-                spawn(&ps[i], outer_r, hole_r2, outer_r2);
-                continue;
+
+        unsigned int off = dur_frame_off[frame_no];
+        unsigned int end = dur_frame_off[frame_no + 1];
+        int cell = 0;
+        while (off < end) {
+            int count = dur_runs[off];
+            int d = dur_runs[off + 1];
+            int col = dur_runs[off + 2];
+            off += 3;
+            if (d == 0) { cell += count; continue; }
+            XSetForeground(dpy, gc, px[col][d]);
+            for (int k = 0; k < count; k++, cell++) {
+                int cx = cell % FRAME_W, cy = cell / FRAME_W;
+                int x0 = cx * sw / FRAME_W, x1 = (cx + 1) * sw / FRAME_W;
+                int y0 = cy * sh / FRAME_H, y1 = (cy + 1) * sh / FRAME_H;
+                XFillRectangle(dpy, pm, gc, x0, y0,
+                               (unsigned)(x1 - x0), (unsigned)(y1 - y0));
             }
-            /* brightness from squared-radius position in the disk:
-             * 0 at the horizon (hot end of RAMP), 1 at the rim */
-            float t = (r2 - hole_r2) / (outer_r2 - hole_r2);
-            int idx = (int)(t * NRAMP);
-            if (idx >= NRAMP) idx = NRAMP - 1;
-            XSetForeground(dpy, gc, RAMP[idx]);
-            XDrawLine(dpy, pm, gc,
-                      (int)(cx + ox), (int)(cy + oy),
-                      (int)(cx + ps[i].x), (int)(cy + ps[i].y));
         }
+
         XChangeProperty(dpy, root, prop_root, XA_PIXMAP, 32, PropModeReplace,
                         (unsigned char *)&pm, 1);
         XChangeProperty(dpy, root, prop_eset, XA_PIXMAP, 32, PropModeReplace,
@@ -96,11 +87,11 @@ int main(int argc, char *argv[]) {
         XSetWindowBackgroundPixmap(dpy, root, pm);
         XClearWindow(dpy, root);
         XFlush(dpy);
+        frame_no = (frame_no + 1) % NFRAMES;
         if (frames > 0) frames--;
         nanosleep(&tick, NULL);
     }
 
-    free(ps);
     XFreePixmap(dpy, pm);
     XFreeGC(dpy, gc);
     XCloseDisplay(dpy);

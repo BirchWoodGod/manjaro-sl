@@ -5,11 +5,14 @@ all: xblackhole
 config.h:
 	cp config.def.h $@
 
-xblackhole: main.c config.h
+frames.h: blackhole-smooth-240x67.dur dur2c.py
+	python3 dur2c.py blackhole-smooth-240x67.dur frames.h
+
+xblackhole: main.c config.h frames.h
 	${CC} ${CFLAGS} -o $@ main.c ${LIBS}
 
 clean:
-	rm -f xblackhole
+	rm -f xblackhole frames.h
 
 install: all
 	mkdir -p ${DESTDIR}${PREFIX}/bin

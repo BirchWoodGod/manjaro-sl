@@ -1390,3 +1390,33 @@ out=$(TUI_ACTIVE=0 bash -c '
 ' <<< "3
 " 2>&1)
 assert_contains "$(echo "$out" | grep 'Keep current')" "(*)"
+
+# xblackhole dur2c.py converter: tiny 2-frame 2x2 fixture round-trips into
+# expected RLE runs and colors
+d2c_tmp=$(mktemp -d)
+python3 - "$d2c_tmp" <<'PYEOF'
+import gzip, json, sys
+fixture = {"DurMovie": {"formatVersion": 7, "colorFormat": "256",
+  "encoding": "utf-8", "name": "t", "artist": "t", "framerate": 12.0,
+  "columns": 2, "lines": 2, "frames": [
+    {"frameNumber": 1, "delay": 0,
+     "contents": ["██", "  "],
+     "colorMap": [[[17,0],[0,0]], [[17,0],[0,0]]]},
+    {"frameNumber": 2, "delay": 0,
+     "contents": ["  ", "░░"],
+     "colorMap": [[[0,0],[54,0]], [[0,0],[54,0]]]}]}}
+with gzip.open(sys.argv[1] + "/fix.dur", "wt", encoding="utf-8") as fh:
+    json.dump(fixture, fh)
+PYEOF
+python3 "$REPO_ROOT/xblackhole/dur2c.py" "$d2c_tmp/fix.dur" "$d2c_tmp/out.h"
+assert_ok test -f "$d2c_tmp/out.h"
+hdr=$(cat "$d2c_tmp/out.h")
+assert_contains "$hdr" "FRAME_W = 2, FRAME_H = 2, NFRAMES = 2"
+# colors used: 17 (#00005f) and 54 (#5f0087) — sorted → index 0,1
+assert_contains "$hdr" "0x00005f"
+assert_contains "$hdr" "0x5f0087"
+# frame 1: run of 2 full-density color-0 cells then 2 empty:  2,6,0, 2,0,0
+assert_contains "$hdr" "2,6,0"
+# frame 2: 2 empty then 2 light-shade color-1:  2,3,1
+assert_contains "$hdr" "2,3,1"
+rm -rf "$d2c_tmp"
