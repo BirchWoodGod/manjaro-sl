@@ -680,6 +680,7 @@ apply_configuration() {
     configure_dwm_modkey
   fi
   setup_misc_files
+  configure_tray_icon_theme
 }
 
 # run_step's subshell isolation (see apply_configuration's comment above)

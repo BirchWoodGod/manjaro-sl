@@ -214,6 +214,56 @@ assert_eq "$(grep -c 'manjaro-sl wallpaper >>>' "$HOME/.xinitrc")" "1"
 
 HOME=$OLD_HOME
 
+# configure_tray_icon_theme: GTK draws tray icons with the color baked into
+# the icon theme's SVGs, so a light breeze theme (Manjaro KDE leftover)
+# renders the nm-applet icon near-black — embedded and clickable in the dwm
+# systray but invisible on the dark bar. The fix repoints GTK3 at
+# Papirus-Dark, only when the current theme is a known-broken light breeze
+# or unset. Host-coupled: exercised only when Papirus-Dark is installed.
+source "$REPO_ROOT/lib/configure.sh"
+if [ -d /usr/share/icons/Papirus-Dark ]; then
+  OLD_HOME=$HOME
+  export HOME=$(mktemp -d)
+  ini="$HOME/.config/gtk-3.0/settings.ini"
+
+  # light breeze gets rewritten, with a backup of the original
+  mkdir -p "${ini%/*}"
+  printf '[Settings]\ngtk-icon-theme-name=breeze\ngtk-font-name=Noto Sans, 10\n' > "$ini"
+  out=$(configure_tray_icon_theme)
+  assert_contains "$(cat "$ini")" "gtk-icon-theme-name=Papirus-Dark"
+  assert_contains "$(cat "$ini")" "gtk-font-name=Noto Sans, 10"   # rest of the file untouched
+  assert_eq "$(find "${ini%/*}" -name 'settings.ini.*.bak' | wc -l)" "1"
+  assert_contains "$(cat "${ini%/*}"/settings.ini.*.bak)" "gtk-icon-theme-name=breeze"
+
+  # idempotent: a second run is a no-op (no extra backup)
+  configure_tray_icon_theme
+  assert_eq "$(find "${ini%/*}" -name 'settings.ini.*.bak' | wc -l)" "1"
+
+  # a deliberately chosen non-breeze theme is left alone
+  printf '[Settings]\ngtk-icon-theme-name=Adwaita\n' > "$ini"
+  out=$(configure_tray_icon_theme)
+  assert_contains "$(cat "$ini")" "gtk-icon-theme-name=Adwaita"
+  assert_contains "$out" "Keeping GTK icon theme 'Adwaita'"
+
+  # no settings.ini at all: one is created pointing at the dark theme
+  rm -rf "${ini%/*}"
+  configure_tray_icon_theme
+  assert_contains "$(cat "$ini")" "gtk-icon-theme-name=Papirus-Dark"
+
+  # settings.ini without an icon-theme line: the line is appended
+  printf '[Settings]\ngtk-cursor-theme-name=breeze_cursors\n' > "$ini"
+  rm -f "${ini%/*}"/settings.ini.*.bak
+  configure_tray_icon_theme
+  assert_contains "$(cat "$ini")" "gtk-icon-theme-name=Papirus-Dark"
+  assert_contains "$(cat "$ini")" "gtk-cursor-theme-name=breeze_cursors"
+
+  HOME=$OLD_HOME
+fi
+
+# papirus-icon-theme ships in the recommended list so the tray-icon fix has
+# a dark theme to point at on fresh machines
+assert_contains "$(list_entries "$REPO_ROOT/data/install-recommended.list")" "papirus-icon-theme|"
+
 # wallpaper registry
 assert_ok is_known_wallpaper doomfire
 assert_ok is_known_wallpaper xblackhole

@@ -5,6 +5,7 @@ htop|Process viewer|on
 nano|Text editor|on
 networkmanager|Network management|on
 network-manager-applet|Tray applet|on
+papirus-icon-theme|Icon theme (tray icons visible on the dark bar)|on
 tldr|Simplified man pages|on
 brightnessctl|Backlight control|on
 alsa-utils|Audio mixer/controls|on

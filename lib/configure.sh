@@ -390,6 +390,49 @@ PY
   fi
 }
 
+# configure_tray_icon_theme — GTK apps draw tray icons (nm-applet) with the
+# color baked into the icon theme's SVGs; KDE recolors breeze icons at
+# runtime, GTK cannot. Manjaro's KDE edition leaves gtk-icon-theme-name=breeze
+# behind, whose light-variant icons are near-black — the icon embeds in the
+# dwm systray and stays clickable but is invisible on the dark bar. Repoint
+# GTK3 at Papirus-Dark when the current theme is a known-broken light breeze
+# (or unset); a deliberately chosen non-breeze theme is left alone.
+configure_tray_icon_theme() {
+  local theme="Papirus-Dark"
+  local ini="$HOME/.config/gtk-3.0/settings.ini"
+
+  if [ ! -d "/usr/share/icons/${theme}" ] && [ ! -d "$HOME/.local/share/icons/${theme}" ]; then
+    echo "Note: ${theme} not installed; leaving the GTK icon theme unchanged (tray icons may be invisible on the dark bar)." >&2
+    return 0
+  fi
+
+  local current=""
+  if [ -f "$ini" ]; then
+    current=$(sed -n 's/^gtk-icon-theme-name=\(.*\)$/\1/p' "$ini" | head -n1)
+  fi
+  case "$current" in
+    "$theme") return 0 ;;
+    breeze|Breeze|Breeze_Light|"") ;;
+    *)
+      echo "Keeping GTK icon theme '${current}' (not a known-broken light breeze)."
+      return 0
+      ;;
+  esac
+
+  if [ -f "$ini" ]; then
+    cp "$ini" "${ini}.$(date +%Y%m%d%H%M%S).bak"
+    if [ -n "$current" ]; then
+      sed -i "s/^gtk-icon-theme-name=.*/gtk-icon-theme-name=${theme}/" "$ini"
+    else
+      printf 'gtk-icon-theme-name=%s\n' "$theme" >> "$ini"
+    fi
+  else
+    mkdir -p "${ini%/*}"
+    printf '[Settings]\ngtk-icon-theme-name=%s\n' "$theme" > "$ini"
+  fi
+  echo "Set the GTK icon theme to ${theme} so tray icons are visible on the dark bar."
+}
+
 setup_misc_files() {
   local xinit_source="${REPO_ROOT}/misc0/xinitrc-config.txt"
   local xinit_target="$HOME/.xinitrc"

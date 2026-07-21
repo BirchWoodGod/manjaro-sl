@@ -64,7 +64,10 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
    build → Ly → wallpaper in that order, logging each step to
    `~/.local/state/manjaro-sl/run-<timestamp>.log`. The **Enable networking**
    step enables `NetworkManager.service` so networking (and the `nm-applet`
-   tray icon in the dwm systray) works on a fresh machine.
+   tray icon in the dwm systray) works on a fresh machine. The configure step
+   also repoints the GTK icon theme at Papirus-Dark when it finds a light
+   breeze theme left behind (e.g. by Manjaro's KDE edition) — light breeze
+   tray icons are drawn near-black and are invisible on the dark dwm bar.
 4. **Quit**.
 
 Presets are no longer a menu item — they remain available non-interactively
@@ -363,7 +366,7 @@ sets from `data/install-core.list` and `data/install-recommended.list`:
 sudo pacman -Syu base-devel libx11 libxft libxinerama freetype2 fontconfig \
   pkgconf python libnewt xorg xorg-xinit ly \
   feh meson fastfetch htop nano networkmanager network-manager-applet \
-  tldr brightnessctl alsa-utils firefox net-tools
+  papirus-icon-theme tldr brightnessctl alsa-utils firefox net-tools
 ```
 
 **Build dependencies for j4-dmenu-desktop:**
