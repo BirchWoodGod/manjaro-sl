@@ -32,7 +32,7 @@ available, install it with `sudo pacman -S libnewt` when prompted.
 
 Launching `./manjaro-sl.sh` with no flags always runs an auto-preload check
 first (`detect_existing_setup`), then opens a whiptail main menu with these
-five sections (selections stack across screens into one in-memory state
+four sections (selections stack across screens into one in-memory state
 until you apply them):
 
 ```
@@ -40,9 +40,8 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
                    or "fresh setup")
 1. Desktop Setup   components checklist + modkey + bar color + interface + battery
 2. Appearance      one animation choice for login screen AND desktop
-3. Presets         Recommended / Minimal
-4. Preview & Apply
-5. Quit
+3. Preview & Apply
+4. Quit
 ```
 
 1. **Desktop Setup** — a single submenu fusing what used to be two separate
@@ -61,16 +60,17 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
    desktop wallpaper override, and the "Enable Ly on boot" checkbox (see
    [Appearance](#appearance) below for the full mapping and Custom…/override
    behavior).
-3. **Presets** — bulk-set every checklist to a curated **Recommended** or
-   **Minimal** profile (see table below); you can still hand-edit any screen
-   afterward.
-4. **Preview & Apply** — shows every queued action, asks for final
+3. **Preview & Apply** — shows every queued action, asks for final
    confirmation, then executes configure → install → enable networking →
    build → Ly → wallpaper in that order, logging each step to
    `~/.local/state/manjaro-sl/run-<timestamp>.log`. The **Enable networking**
    step enables `NetworkManager.service` so networking (and the `nm-applet`
    tray icon in the dwm systray) works on a fresh machine.
-5. **Quit**.
+4. **Quit**.
+
+Presets are no longer a menu item — they remain available non-interactively
+via the `--preset recommended|minimal` flag (see the table below and
+[Non-Interactive Usage](#non-interactive-usage)).
 
 ### Auto-preload
 

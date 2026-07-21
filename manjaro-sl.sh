@@ -778,24 +778,18 @@ apply_all() {
   tui_msgbox "Done" "All steps finished. Log: ${RUN_LOG:-none}\nReboot to switch to Ly + dwm."
 }
 
+# The Presets radiolist is intentionally not surfaced here anymore — presets
+# remain available non-interactively via the --preset flag (see parse_args /
+# usage), they're just hidden from the interactive menu.
 main_menu() {
   while true; do
     local pick
     pick=$(tui_menu "manjaro-sl" "$SETUP_BANNER — Main menu" \
       desktop "Desktop Setup"  appearance "Appearance" \
-      preset "Presets"  apply "Preview & Apply"  quit "Quit") || pick=quit
+      apply "Preview & Apply"  quit "Quit") || pick=quit
     case "$pick" in
       desktop)    desktop_setup_menu ;;
       appearance) appearance_menu ;;
-      preset)     local p; p=$(tui_radiolist "Preset" "Choose" \
-                    recommended       "Recommended (keeps your changes)"        on \
-                    minimal           "Minimal (keeps your changes)"            off \
-                    reset-recommended "Recommended — overwrite everything"      off \
-                    reset-minimal     "Minimal — overwrite everything"          off) && \
-                    case "$p" in
-                      reset-*) preset_apply "${p#reset-}" reset ;;
-                      recommended|minimal) preset_apply "$p" baseline ;;
-                    esac ;;
       apply)      if tui_yesno "Preview" "$(preview_text)\n\nApply now?"; then apply_all; fi ;;
       quit|"")    break ;;
     esac

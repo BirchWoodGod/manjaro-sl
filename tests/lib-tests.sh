@@ -1071,7 +1071,9 @@ assert_eq "$(echo "$out" | grep -c "phase-3")" "0"
 main_menu_block=$(sed -n '/^main_menu() {/,/^}/p' "$REPO_ROOT/manjaro-sl.sh")
 assert_contains "$main_menu_block" 'desktop "Desktop Setup"'
 assert_contains "$main_menu_block" 'appearance "Appearance"'
-assert_eq "$(echo "$main_menu_block" | grep -o ';;' | wc -l)" "7"   # 5 menu entries (desktop/appearance/preset/apply/quit) + 2 nested arms (preset's reset-*/recommended|minimal case)
+# Presets are hidden from the interactive menu (still reachable via --preset).
+assert_eq "$(echo "$main_menu_block" | grep -c 'Presets')" "0"
+assert_eq "$(echo "$main_menu_block" | grep -o ';;' | wc -l)" "4"   # 4 menu entries: desktop/appearance/apply/quit
 assert_eq "$(grep -c 'Reconfigure' "$REPO_ROOT/manjaro-sl.sh")" "0"
 assert_eq "$(grep -c '"Install DWM' "$REPO_ROOT/manjaro-sl.sh")" "0"
 assert_eq "$(grep -c '"Configure DWM' "$REPO_ROOT/manjaro-sl.sh")" "0"
