@@ -1,20 +1,17 @@
 # manjaro-sl
 
-A WinUtil-inspired whiptail TUI for Manjaro Linux that does two things in one
-tool: **debloats a stock Manjaro install** (Manjaro-branded packages, unwanted
-preinstalled apps, printing/bluetooth stacks, old desktop environments and
-display managers) and **installs/configures a customized DWM suckless
-desktop** — dwm, dmenu (with j4-dmenu-desktop), st, slstatus, a Ly display
-manager, and from-scratch animated X11 wallpapers (Doom fire, Matrix rain,
-color gradients, Game of Life, black hole).
+A WinUtil-inspired whiptail TUI for Manjaro (and other Arch-based) Linux that
+**installs and configures a customized DWM suckless desktop** — dwm, dmenu
+(with j4-dmenu-desktop), st, slstatus, a Ly display manager, and from-scratch
+animated X11 wallpapers (Doom fire, Matrix rain, color gradients, Game of
+Life, black hole).
 It also doubles as a **reconfiguration tool**: re-run it on a machine it
 already set up and it auto-detects the existing setup and preloads current
-settings so you can change just the modkey, bar color, wallpaper, or
-debloat selections.
+settings so you can change just the modkey, bar color, or wallpaper.
 
 > **Note**: This automation was developed with AI assistance to provide an
-> interactive whiptail TUI, safety-railed debloat engine, and reproducible
-> non-interactive/profile-based setup.
+> interactive whiptail TUI and a reproducible non-interactive/profile-based
+> setup.
 
 ---
 
@@ -35,7 +32,7 @@ available, install it with `sudo pacman -S libnewt` when prompted.
 
 Launching `./manjaro-sl.sh` with no flags always runs an auto-preload check
 first (`detect_existing_setup`), then opens a whiptail main menu with these
-seven sections (selections stack across screens into one in-memory state
+five sections (selections stack across screens into one in-memory state
 until you apply them):
 
 ```
@@ -43,11 +40,9 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
                    or "fresh setup")
 1. Desktop Setup   components checklist + modkey + bar color + interface + battery
 2. Appearance      one animation choice for login screen AND desktop
-3. Debloat Manjaro (unchanged)
-4. System Tweaks   (unchanged)
-5. Presets         Recommended / Minimal
-6. Preview & Apply (unchanged)
-7. Quit
+3. Presets         Recommended / Minimal
+4. Preview & Apply
+5. Quit
 ```
 
 1. **Desktop Setup** — a single submenu fusing what used to be two separate
@@ -66,18 +61,16 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
    desktop wallpaper override, and the "Enable Ly on boot" checkbox (see
    [Appearance](#appearance) below for the full mapping and Custom…/override
    behavior).
-3. **Debloat Manjaro** — submenu of category checklists: Manjaro-branded
-   packages, preinstalled apps, printing stack, bluetooth stack, and old
-   DE/DM removal.
-4. **System Tweaks** — checklist of systemd service enable/disable toggles.
-5. **Presets** — bulk-set every checklist to a curated **Recommended** or
+3. **Presets** — bulk-set every checklist to a curated **Recommended** or
    **Minimal** profile (see table below); you can still hand-edit any screen
    afterward.
-6. **Preview & Apply** — shows every queued action, asks for final
-   confirmation, then executes debloat → tweaks → install → build → configure
-   → Ly → wallpaper in that order, logging each step to
-   `~/.local/state/manjaro-sl/run-<timestamp>.log`.
-7. **Quit**.
+4. **Preview & Apply** — shows every queued action, asks for final
+   confirmation, then executes configure → install → enable networking →
+   build → Ly → wallpaper in that order, logging each step to
+   `~/.local/state/manjaro-sl/run-<timestamp>.log`. The **Enable networking**
+   step enables `NetworkManager.service` so networking (and the `nm-applet`
+   tray icon in the dwm systray) works on a fresh machine.
+5. **Quit**.
 
 ### Auto-preload
 
@@ -106,42 +99,19 @@ load with `--profile FILE` to reproduce the same setup non-interactively.
 
 ### Presets
 
+Both presets build the full suckless component set (`dwm`, `dmenu`, `st`,
+`slstatus`, plus `doomfire`) and set up Ly as the display manager. They
+differ only in the extra recommended software and the desktop look:
+
 | Category | Recommended | Minimal |
 |---|---|---|
 | Recommended packages (feh, meson, fastfetch, htop, nano, NetworkManager, tldr, brightnessctl, alsa-utils, firefox, net-tools...) | all checked | all unchecked |
-| Manjaro-branded debloat | checked, except `pamac*` and cosmetic packages (wallpapers, icons, grub theme) | all checked (except `manjaro-zsh-config`) |
-| Preinstalled apps debloat | unchecked | checked (except `timeshift*`) |
-| Printing stack debloat | unchecked | unchecked |
-| Bluetooth stack debloat | unchecked | unchecked |
-| Old DE/DM removal | prompted | checked |
-| System tweaks | NetworkManager + fstrim on | NetworkManager + fstrim on |
+| Components (dwm, dmenu, st, slstatus, doomfire) | checked | checked |
 | Wallpaper | doomfire (matching Ly) | none |
+| Ly on boot | enabled | enabled |
 
-`pamac*` is never auto-checked in Recommended (you keep a GUI package
-manager by default). `timeshift` and `manjaro-zsh-config` are **never**
-auto-checked by either preset — the TUI shows a warning next to them
-because removing them takes out your backup system or your zsh/
-powerlevel10k setup, and you have to check them yourself if you want them
-gone.
-
-### Debloat safety rails
-
-The removal engine (`lib/debloat.sh`) has hard rules that no data file or
-flag can override:
-
-- **Hardcoded denylist** checked before every removal batch — core system
-  packages (`manjaro-system`, `manjaro-keyring`, `archlinux-keyring`,
-  `manjaro-alsa`, `manjaro-gstreamer`, `manjaro-pipewire`, `mhwd*`,
-  `pacman`, `pacman-mirrors`, `sudo`, `systemd`, `base`, `filesystem`,
-  `linux*`, `networkmanager`) are refused even if a data file lists them.
-- **`pacman -Rns` only, never `-Rdd`** — removal runs as a single batch, so
-  if pacman reports a dependency conflict the whole batch fails safely and
-  nothing in it is force-removed; resolve the conflict and re-run.
-- **The currently running display manager is never stopped**, only
-  disabled — it keeps running until next reboot so you're never dropped to
-  a black screen mid-session.
-- **Every removal batch is logged** with package versions to
-  `~/.local/state/manjaro-sl/removed-<timestamp>.log`.
+Regardless of preset, `NetworkManager.service` is enabled during apply (see
+the Preview & Apply step order above) unless you pass `--skip-packages`.
 
 ### Appearance
 
@@ -351,24 +321,21 @@ Options:
   --dry-run                 Print mutating commands instead of running them
   --preset NAME             Bulk-apply a preset: 'recommended' or 'minimal'
   --only SECTION            Restrict --apply to one section (repeatable):
-                            install|debloat|tweaks|dwm|ly
+                            install|dwm|ly
   --profile FILE            Load previously saved selections from FILE
   --wallpaper WP            Set dwm wallpaper animation: 'none' or any built
                             wallpaper (doomfire, xmatrix, xcolormix,
                             xgameoflife, xblackhole, xstarfield, xplasma,
                             xrain, xfireflies)
-  --enable-SLUG             Turn on a debloat/install/AUR entry by package
-                            name
-  --disable-SLUG            Turn off a debloat/install/AUR entry by package
-                            name
+  --enable-SLUG             Turn on an install/AUR entry by package name
+  --disable-SLUG            Turn off an install/AUR entry by package name
   --interface IFACE         Set slstatus network interface
   --battery                 Enable the slstatus battery widget
   --no-battery              Disable the slstatus battery widget
   --bar-color COLOR         Hex color for the dwm selected bar
   --modkey KEY              dwm modkey: 'super' or 'alt'
-  --remove-de               Mark installed old DEs/DMs for removal
-  --no-remove-de            Leave old DEs/DMs alone (default)
   --skip-packages           Skip the recommended/build package install step
+                            (also skips enabling NetworkManager)
   --copy-xinit              Copy the xinitrc helper to ~/.xinitrc
   --no-copy-xinit           Skip copying the xinitrc helper
   --copy-desktop            Copy the dwm.desktop session entry
@@ -383,23 +350,23 @@ Run `./manjaro-sl.sh --help` for the full, authoritative flag list.
 ./manjaro-sl.sh --preset minimal --dry-run --apply
 ./manjaro-sl.sh -y
 ./manjaro-sl.sh --interface wlan0 --battery
-./manjaro-sl.sh --only debloat --dry-run --apply
+./manjaro-sl.sh --only dwm --dry-run --apply
 ./manjaro-sl.sh --wallpaper xmatrix
 ./manjaro-sl.sh --profile ~/.config/manjaro-sl/profile --apply
 ```
 
 ### `--dry-run`, honestly
 
-`--dry-run` makes the **debloat**, **tweaks**, and **install packages**
-steps print the exact `pacman`/`systemctl` commands they would run instead
-of executing them — safe to use for a preview on a real machine. The
-**build**, **configure**, **Ly**, and **wallpaper** steps write files and
-touch services directly rather than going through the same dry-run-aware
-command wrapper, so under `--dry-run` they are **skipped entirely** with a
-`[dry-run] skipping <step>` notice — they are not simulated. This is why
-`--only debloat --dry-run --apply` (or `--preset ... --dry-run --apply`) is
-the safe way to preview a run end-to-end: every step that would actually be
-skipped-not-simulated is one you probably don't need a preview of anyway.
+`--dry-run` makes the **install packages** and **enable networking** steps
+print the exact `pacman`/`systemctl` commands they would run instead of
+executing them — safe to use for a preview on a real machine. The **build**,
+**configure**, **Ly**, and **wallpaper** steps write files and touch services
+directly rather than going through the same dry-run-aware command wrapper, so
+under `--dry-run` they are **skipped entirely** with a `[dry-run] skipping
+<step>` notice — they are not simulated. This is why `--preset ... --dry-run
+--apply` is the safe way to preview a run end-to-end: every step that would
+actually be skipped-not-simulated is one you probably don't need a preview of
+anyway.
 
 ---
 

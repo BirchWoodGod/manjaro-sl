@@ -56,29 +56,23 @@ assert_ok test "$?" -eq 0
 source "$REPO_ROOT/lib/state.sh"
 
 # list parsing strips comments/blanks
-entries=$(list_entries "$REPO_ROOT/data/debloat-bluetooth.list")
-assert_contains "$entries" "bluez|Bluetooth stack|off"
+entries=$(list_entries "$REPO_ROOT/data/install-recommended.list")
+assert_contains "$entries" "feh|Image viewer / wallpaper setter|on"
 assert_eq "$(echo "$entries" | grep -c '^#')" "0"
 
 # selections
-state_set "debloat/bluez" on
-assert_eq "$(state_get debloat/bluez)" "on"
+state_set "install/feh" on
+assert_eq "$(state_get install/feh)" "on"
 assert_eq "$(state_get missing/key)" "off"
-assert_ok state_on debloat/bluez
+assert_ok state_on install/feh
 assert_fail state_on missing/key
-
-# denylist blocks criticals incl. globs
-assert_ok denylisted manjaro-keyring
-assert_ok denylisted mhwd-nvidia-580xx
-assert_ok denylisted linux-lts
-assert_fail denylisted manjaro-hello
 
 # profile round-trip
 pf=$(mktemp)
 profile_save "$pf"
 unset SELECTIONS; declare -gA SELECTIONS
 profile_load "$pf"
-assert_eq "$(state_get debloat/bluez)" "on"
+assert_eq "$(state_get install/feh)" "on"
 rm -f "$pf"
 
 # profile_save creates missing parent directories (regression: apply_all died
@@ -88,34 +82,33 @@ assert_ok profile_save "$pd/newdir/profile"
 assert_ok test -f "$pd/newdir/profile"
 rm -rf "$pd"
 
-# preset_apply: recommended — file defaults for debloat-manjaro, apps stay
-# off, recommended installs on, doomfire wallpaper + doom ly animation
+# preset_apply: recommended — recommended installs on, full component set,
+# doomfire wallpaper + doom ly animation kept in sync
 unset SELECTIONS; declare -gA SELECTIONS
 preset_apply recommended
-assert_eq "$(state_get debloat/manjaro-hello)" "on"
-assert_eq "$(state_get debloat/pamac-gtk3)" "off"
 assert_eq "$(state_get install/feh)" "on"
+assert_eq "$(state_get component/dwm)" "on"
 assert_eq "$(state_get dwm/wallpaper)" "doomfire"
 assert_eq "$(state_get ly/animation)" "doom"
+assert_eq "$(state_get ly/enable)" "on"
 
-# preset_apply: minimal — everything (except warned items) removed, no
-# recommended installs, no wallpaper, but components still on
+# preset_apply: minimal — no recommended installs, no wallpaper, but the
+# component set (and Ly) still on
 unset SELECTIONS; declare -gA SELECTIONS
 preset_apply minimal
-assert_eq "$(state_get debloat/pamac-gtk3)" "on"
-assert_eq "$(state_get debloat/timeshift)" "off"
 assert_eq "$(state_get install/feh)" "off"
 assert_eq "$(state_get dwm/wallpaper)" "none"
 assert_eq "$(state_get component/dwm)" "on"
+assert_eq "$(state_get ly/enable)" "on"
 
 # presets respect user choices: baseline skips USER_TOUCHED keys, reset
 # overwrites, untouched keys filled in both modes
 unset SELECTIONS USER_TOUCHED; declare -gA SELECTIONS USER_TOUCHED
 user_set dwm/wallpaper xrain
-user_set debloat/manjaro-hello off
+user_set install/htop off
 preset_apply recommended baseline
 assert_eq "$(state_get dwm/wallpaper)" "xrain"          # touched: survives
-assert_eq "$(state_get debloat/manjaro-hello)" "off"    # touched: survives
+assert_eq "$(state_get install/htop)" "off"             # touched: survives
 assert_eq "$(state_get install/feh)" "on"               # untouched: filled
 preset_apply recommended reset
 assert_eq "$(state_get dwm/wallpaper)" "doomfire"       # reset: overwritten
@@ -157,74 +150,14 @@ assert_eq "$rc" "0"
 assert_contains "$out" "Usage:"
 rm -rf "$nosudo_dir"
 
-source "$REPO_ROOT/lib/debloat.sh"
-
-# filtering: fake pacman that says only 'bluez' is installed
-pacman() { [ "$1" = "-Qq" ] && { [ "$2" = "bluez" ]; return; }; command pacman "$@"; }
-out=$(debloat_installed_from "$REPO_ROOT/data/debloat-bluetooth.list")
-assert_contains "$out" "bluez|"
-assert_eq "$(echo "$out" | grep -c blueman)" "0"
-
-# denylist enforcement in apply: selecting a denylisted pkg must be refused
-declare -gA SELECTIONS=()
-state_set "debloat/manjaro-keyring" on
-state_set "debloat/bluez" on
+# ensure_networkmanager_enabled routes its enable through run_mut (dry-run
+# aware) — folded in from the removed System Tweaks section so networking
+# (and the nm-applet tray icon) works on a fresh machine.
+source "$REPO_ROOT/lib/packages.sh"
 DRY_RUN=1
-out=$(debloat_apply)
-assert_contains "$out" "REFUSED (denylist): manjaro-keyring"
-assert_contains "$out" "+ sudo pacman -Rns"
-assert_contains "$out" "bluez"
-unset -f pacman
-
-# group-aware detection: 'plasma' is a pacman GROUP on Manjaro KDE — Qq
-# fails but Qg succeeds; the entry must be offered. Unknown names: neither
-# works → not offered.
-pacman() {
-  case "$1" in
-    -Qq) [ "$2" = "plasma" ] && return 1; [ "$2" = "bluez" ] && return 0; return 1 ;;
-    -Qg) [ "$2" = "plasma" ] && { echo "plasma plasma-desktop"; return 0; }; return 1 ;;
-    *) command pacman "$@" ;;
-  esac
-}
-out=$(debloat_installed_from "$REPO_ROOT/data/de.list")
-assert_contains "$out" "plasma|"
-out=$(debloat_installed_from "$REPO_ROOT/data/debloat-bluetooth.list")
-assert_contains "$out" "bluez|"
-assert_eq "$(echo "$out" | grep -c blueman)" "0"
-unset -f pacman
-
-# I1: ACCEPT_DEFAULTS=1 (non-interactive -y/--apply runs) must pass
-# --noconfirm to the removal command too, mirroring lib/packages.sh's
-# install path — otherwise pacman -Rns's confirmation prompt blocks forever
-# with no one at the terminal to answer it.
-declare -gA SELECTIONS=()
-state_set "debloat/bluez" on
-DRY_RUN=1
-ACCEPT_DEFAULTS=1
-out=$(debloat_apply)
-assert_contains "$out" "+ sudo pacman -Rns --noconfirm"
-assert_contains "$out" "bluez"
-ACCEPT_DEFAULTS=0
-
-# preset_apply minimal marks installed old DEs/DMs for removal; recommended
-# leaves them untouched ("prompt" per the spec's preset table)
-pacman() { [ "$1" = "-Qq" ] && { [ "$2" = "sddm" ]; return; }; command pacman "$@"; }
-unset SELECTIONS; declare -gA SELECTIONS
-preset_apply minimal
-assert_eq "$(state_get debloat/sddm)" "on"
-unset SELECTIONS; declare -gA SELECTIONS
-preset_apply recommended
-assert_eq "$(state_get debloat/sddm)" "off"
-unset -f pacman
-
-source "$REPO_ROOT/lib/tweaks.sh"
-declare -gA SELECTIONS=()
-state_set "tweak/enable:fstrim.timer" on
-state_set "tweak/disable:cups.service" on
-DRY_RUN=1
-out=$(tweaks_apply)
-assert_contains "$out" "+ sudo systemctl enable fstrim.timer"
-assert_contains "$out" "+ sudo systemctl disable cups.service"
+out=$(ensure_networkmanager_enabled)
+assert_contains "$out" "+ sudo systemctl enable --now NetworkManager.service"
+DRY_RUN=0
 
 source "$REPO_ROOT/lib/wallpaper.sh"
 declare -gA SELECTIONS=()
@@ -325,29 +258,23 @@ out=$(TUI_ACTIVE=0 bash -c '
   declare -gA SELECTIONS=()
   preview_text
 ')
-assert_contains "$out" "REMOVE:"
 assert_contains "$out" "INSTALL:"
 assert_contains "$out" "BUILD:"
 assert_contains "$out" "CONFIGURE:"
-assert_contains "$out" "TWEAKS:"
 assert_contains "$out" "WALLPAPER:"
 assert_contains "$out" "(none)"
 
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
-  state_set debloat/manjaro-hello on
   state_set install/feh on
   state_set component/dwm on
   state_set dwm/modkey super
-  state_set "tweak/enable:fstrim.timer" on
   state_set dwm/wallpaper doomfire
   preview_text
 ')
-assert_contains "$out" "manjaro-hello"
 assert_contains "$out" "feh"
 assert_contains "$out" "modkey=super"
-assert_contains "$out" "enable:fstrim.timer"
 assert_contains "$out" "doomfire"
 
 # apply_all's run_step subshells can't propagate cross-step state_set calls
@@ -448,14 +375,14 @@ DRY_RUN=0
 unset -f pacman
 
 # parse_args: legacy flags map onto dwm/* SELECTIONS + globals; --enable-*/
-# --disable-* toggle debloat/install entries by slug; --only is repeatable
+# --disable-* toggle install/AUR entries by slug; --only is repeatable
 # and section_enabled reflects it; --dry-run sets DRY_RUN.
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
   parse_args --interface eth0 --battery --bar-color "#112233" --modkey super \
     --wallpaper doomfire --skip-packages --copy-xinit --no-copy-desktop \
-    --enable-bluez --disable-feh --only debloat --only ly --dry-run
+    --enable-cdesktopenv --disable-feh --only dwm --only ly --dry-run
   echo "interface=$(state_get dwm/interface)"
   echo "battery=$(state_get dwm/battery)"
   echo "barcolor=$(state_get dwm/barcolor)"
@@ -464,10 +391,10 @@ out=$(TUI_ACTIVE=0 bash -c '
   echo "skip=$SKIP_PACKAGES"
   echo "copyxinit=$COPY_XINIT"
   echo "copydesktop=$COPY_DESKTOP"
-  echo "bluez=$(state_get debloat/bluez)"
+  echo "cde=$(state_get aur/cdesktopenv)"
   echo "feh=$(state_get install/feh)"
   echo "dryrun=$DRY_RUN"
-  section_enabled debloat && echo "debloat_section=yes"
+  section_enabled dwm && echo "dwm_section=yes"
   section_enabled ly && echo "ly_section=yes"
   section_enabled install || echo "install_section=no"
 ')
@@ -479,19 +406,18 @@ assert_contains "$out" "wallpaper=doomfire"
 assert_contains "$out" "skip=1"
 assert_contains "$out" "copyxinit=yes"
 assert_contains "$out" "copydesktop=no"
-assert_contains "$out" "bluez=on"
+assert_contains "$out" "cde=on"
 assert_contains "$out" "feh=off"
 assert_contains "$out" "dryrun=1"
-assert_contains "$out" "debloat_section=yes"
+assert_contains "$out" "dwm_section=yes"
 assert_contains "$out" "ly_section=yes"
 assert_contains "$out" "install_section=no"
 
-# --no-battery / --no-remove-de / --no-copy-xinit / --copy-desktop and the
-# --no-remove-de note
+# --no-battery / --no-copy-xinit / --copy-desktop
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
-  parse_args --no-battery --no-remove-de --no-copy-xinit --copy-desktop
+  parse_args --no-battery --no-copy-xinit --copy-desktop
   echo "battery=$(state_get dwm/battery)"
   echo "copyxinit=$COPY_XINIT"
   echo "copydesktop=$COPY_DESKTOP"
@@ -499,34 +425,22 @@ out=$(TUI_ACTIVE=0 bash -c '
 assert_contains "$out" "battery=off"
 assert_contains "$out" "copyxinit=no"
 assert_contains "$out" "copydesktop=yes"
-assert_contains "$out" "Note: --no-remove-de is the default"
-
-# --remove-de reuses debloat_installed_from to mark only installed old
-# DEs/DMs (guarded pattern from preset_apply minimal); mock pacman to say
-# only sddm is installed.
-out=$(TUI_ACTIVE=0 bash -c '
-  source "'"$REPO_ROOT"'/manjaro-sl.sh"
-  declare -gA SELECTIONS=()
-  pacman() { [ "$1" = "-Qq" ] && [ "$2" = "sddm" ]; }
-  parse_args --remove-de
-  state_get debloat/sddm
-')
-assert_eq "$out" "on"
 
 # --preset applies preset_apply immediately when parsed; flags AFTER it
 # override what the preset chose (later wins, strict left-to-right).
+# Recommended turns install/feh on; a --disable-feh after it wins.
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
-  parse_args --preset minimal --disable-manjaro-hello
-  state_get debloat/manjaro-hello
+  parse_args --preset recommended --disable-feh
+  state_get install/feh
 ')
 assert_eq "$out" "off"
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
-  parse_args --disable-manjaro-hello --preset minimal
-  state_get debloat/manjaro-hello
+  parse_args --disable-feh --preset recommended
+  state_get install/feh
 ')
 assert_eq "$out" "on"
 
@@ -678,9 +592,8 @@ assert_contains "$out" "battery=off"
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
-  debloat_apply() { echo "debloat ran"; }
-  tweaks_apply() { echo "tweaks ran"; }
   install_selected_packages() { echo "install ran"; }
+  ensure_networkmanager_enabled() { echo "netmgr ran"; }
   build_selected_components_maybe() { echo "build ran"; }
   apply_configuration_maybe() { echo "configure ran"; }
   configure_ly_display_manager_maybe() { echo "ly ran"; }
@@ -694,19 +607,19 @@ out=$(TUI_ACTIVE=0 bash -c '
 ')
 assert_contains "$out" "==> Configure"
 assert_contains "$out" "==> Wallpaper"
-assert_eq "$(echo "$out" | grep -c '==> Debloat')" "0"
 assert_eq "$(echo "$out" | grep -c '==> Install packages')" "0"
+assert_eq "$(echo "$out" | grep -c '==> Enable networking')" "0"
 assert_eq "$(echo "$out" | grep -c '==> Build components')" "0"
 assert_eq "$(echo "$out" | grep -c '==> Ly')" "0"
 
-# --skip-packages skips only the "Install packages" step, not "Build
-# components" (which is also gated by the "install" section).
+# --skip-packages skips the "Install packages" and "Enable networking" steps
+# (both part of getting the base system usable), not "Build components"
+# (which is also gated by the "install" section).
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
-  debloat_apply() { echo "debloat ran"; }
-  tweaks_apply() { echo "tweaks ran"; }
   install_selected_packages() { echo "install ran"; }
+  ensure_networkmanager_enabled() { echo "netmgr ran"; }
   build_selected_components_maybe() { echo "build ran"; }
   apply_configuration_maybe() { echo "configure ran"; }
   configure_ly_display_manager_maybe() { echo "ly ran"; }
@@ -719,47 +632,33 @@ out=$(TUI_ACTIVE=0 bash -c '
   apply_all
 ')
 assert_eq "$(echo "$out" | grep -c '==> Install packages')" "0"
+assert_eq "$(echo "$out" | grep -c '==> Enable networking')" "0"
 assert_contains "$out" "==> Build components"
-assert_contains "$out" "==> Debloat"
 
-# --- Task 10 Step 3 acceptance gate: non-interactive dry-run smoke tests,
-# run as real subprocesses of ./manjaro-sl.sh with HOME/XDG_STATE_HOME
-# sandboxed to temp dirs (apply_all writes a run log + saved profile there;
-# everything mutating goes through run_mut/the DRY_RUN-gated adapters, so
-# no real system change happens either way). No sudo prompt, no whiptail.
+# --- Non-interactive dry-run smoke tests, run as real subprocesses of
+# ./manjaro-sl.sh with HOME/XDG_STATE_HOME sandboxed to temp dirs (apply_all
+# writes a run log + saved profile there; everything mutating goes through
+# run_mut/the DRY_RUN-gated adapters, so no real system change happens either
+# way). No sudo prompt, no whiptail.
 
+# A full apply enables NetworkManager (folded in from the removed System
+# Tweaks section) so networking + the nm-applet tray icon work.
 t_home=$(mktemp -d); t_state=$(mktemp -d)
 out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
   --preset minimal --dry-run --apply 2>&1); rc=$?
 assert_eq "$rc" "0"
-rns_line=$(echo "$out" | grep 'pacman -Rns' || true)
-assert_contains "$rns_line" "+ sudo pacman -Rns"
-assert_contains "$out" "+ sudo systemctl enable NetworkManager.service"
-# I6: these two assertions are host-coupled — they only hold if
-# manjaro-hello is actually installed on the machine running the suite
-# (proving the dry run left it untouched). Guard them so the suite still
-# passes on a host that's already been debloated.
-if pacman -Qi manjaro-hello >/dev/null 2>&1; then
-  assert_contains "$rns_line" "manjaro-hello"
-  assert_ok bash -c 'pacman -Qi manjaro-hello >/dev/null'
-else
-  echo "SKIP: manjaro-hello not installed (host already debloated?)"
-fi
+assert_contains "$out" "==> Enable networking"
+assert_contains "$out" "+ sudo systemctl enable --now NetworkManager.service"
+# Nothing is ever removed anymore — the debloat step is gone.
+assert_eq "$(echo "$out" | grep -c 'pacman -Rns')" "0"
 rm -rf "$t_home" "$t_state"
 
+# --skip-packages skips the networking-enable step too.
 t_home=$(mktemp -d); t_state=$(mktemp -d)
 out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
-  --preset recommended --dry-run --apply 2>&1)
-assert_eq "$(echo "$out" | grep -c pamac)" "0"
-rm -rf "$t_home" "$t_state"
-
-# Flag order: --disable-manjaro-hello placed AFTER --preset overrides it
-# (see the strict left-to-right ordering established above).
-t_home=$(mktemp -d); t_state=$(mktemp -d)
-out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
-  --preset minimal --disable-manjaro-hello --dry-run --apply 2>&1)
-rns_line=$(echo "$out" | grep 'Rns' || true)
-assert_eq "$(echo "$rns_line" | grep -c manjaro-hello)" "0"
+  --preset recommended --dry-run --apply --skip-packages 2>&1); rc=$?
+assert_eq "$rc" "0"
+assert_eq "$(echo "$out" | grep -c '==> Enable networking')" "0"
 rm -rf "$t_home" "$t_state"
 
 # --- Task 11: legacy positional component args (`./manjaro-sl.sh st`) must
@@ -1172,7 +1071,7 @@ assert_eq "$(echo "$out" | grep -c "phase-3")" "0"
 main_menu_block=$(sed -n '/^main_menu() {/,/^}/p' "$REPO_ROOT/manjaro-sl.sh")
 assert_contains "$main_menu_block" 'desktop "Desktop Setup"'
 assert_contains "$main_menu_block" 'appearance "Appearance"'
-assert_eq "$(echo "$main_menu_block" | grep -o ';;' | wc -l)" "9"   # 7 menu entries + 2 nested arms (preset)'s reset-*/recommended|minimal case)
+assert_eq "$(echo "$main_menu_block" | grep -o ';;' | wc -l)" "7"   # 5 menu entries (desktop/appearance/preset/apply/quit) + 2 nested arms (preset's reset-*/recommended|minimal case)
 assert_eq "$(grep -c 'Reconfigure' "$REPO_ROOT/manjaro-sl.sh")" "0"
 assert_eq "$(grep -c '"Install DWM' "$REPO_ROOT/manjaro-sl.sh")" "0"
 assert_eq "$(grep -c '"Configure DWM' "$REPO_ROOT/manjaro-sl.sh")" "0"

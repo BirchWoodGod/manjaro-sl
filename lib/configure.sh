@@ -132,6 +132,15 @@ configure_slstatus_interface() {
     fi
   fi
 
+  # Non-interactive apply (-y/--apply) with no explicit --interface: default
+  # to the first detected non-loopback interface so a fresh machine doesn't
+  # silently keep the shipped placeholder (wlp3s0), which leaves the slstatus
+  # netspeed widget blank when the real device is named differently.
+  if [ -z "$chosen_iface" ] && [ "$ACCEPT_DEFAULTS" -eq 1 ]; then
+    chosen_iface=$(detect_net_interfaces | head -n1)
+    [ -n "$chosen_iface" ] && echo "Auto-detected network interface '${chosen_iface}' for slstatus."
+  fi
+
   if [ -n "$chosen_iface" ]; then
     require_command python3 "Python 3 is needed to update slstatus/config.h."
     python3 - "$config_file" "$chosen_iface" <<'PY'

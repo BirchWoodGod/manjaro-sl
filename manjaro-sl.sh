@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# manjaro-sl — Manjaro debloater + DWM/suckless setup TUI.
+# manjaro-sl — DWM/suckless + Ly install and customization TUI.
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -17,11 +17,11 @@ usage() {
   cat <<'EOF'
 Usage: ./manjaro-sl.sh [options] [component...]
 
-With no options, launches the interactive whiptail TUI for debloating
-Manjaro and installing dwm/suckless tools (dwm, dmenu, st, slstatus,
-doomfire, xmatrix, xcolormix, xgameoflife, xblackhole, xstarfield, xplasma, xrain, xfireflies) with a Ly
-display manager. An optional drv (Douay-Rheims Bible terminal reader)
-component can also be selected; it's off by default in both presets.
+With no options, launches the interactive whiptail TUI for installing and
+customizing dwm/suckless tools (dwm, dmenu, st, slstatus, doomfire, xmatrix,
+xcolormix, xgameoflife, xblackhole, xstarfield, xplasma, xrain, xfireflies)
+with a Ly display manager. An optional drv (Douay-Rheims Bible terminal
+reader) component can also be selected; it's off by default in both presets.
 
 With any options, flags are processed left-to-right and build up the same
 selection state the TUI edits; pass --apply (or -y) to apply it
@@ -43,23 +43,20 @@ Options:
   --dry-run                 Print mutating commands instead of running them
   --preset NAME             Bulk-apply a preset: 'recommended' or 'minimal'
   --only SECTION            Restrict --apply to one section (repeatable):
-                            install|debloat|tweaks|dwm|ly
+                            install|dwm|ly
   --profile FILE            Load previously saved selections from FILE
   --wallpaper WP            Set dwm wallpaper animation: 'none' or any built
                             wallpaper (doomfire, xmatrix, xcolormix,
                             xgameoflife, xblackhole, xstarfield, xplasma, xrain, xfireflies)
-  --enable-SLUG             Turn on a debloat/install/AUR entry by package
-                            name
-  --disable-SLUG            Turn off a debloat/install/AUR entry by package
-                            name
+  --enable-SLUG             Turn on an install/AUR entry by package name
+  --disable-SLUG            Turn off an install/AUR entry by package name
   --interface IFACE         Set slstatus network interface
   --battery                 Enable the slstatus battery widget
   --no-battery              Disable the slstatus battery widget
   --bar-color COLOR         Hex color for the dwm selected bar
   --modkey KEY              dwm modkey: 'super' or 'alt'
-  --remove-de               Mark installed old DEs/DMs for removal
-  --no-remove-de            Leave old DEs/DMs alone (default)
   --skip-packages           Skip the recommended/build package install step
+                            (also skips enabling NetworkManager)
   --copy-xinit              Copy the xinitrc helper to ~/.xinitrc
   --no-copy-xinit           Skip copying the xinitrc helper
   --copy-desktop            Copy the dwm.desktop session entry
@@ -69,7 +66,7 @@ Examples:
   ./manjaro-sl.sh --preset minimal --dry-run --apply
   ./manjaro-sl.sh -y
   ./manjaro-sl.sh --interface wlan0 --battery
-  ./manjaro-sl.sh --only debloat --dry-run --apply
+  ./manjaro-sl.sh --only dwm --dry-run --apply
   ./manjaro-sl.sh --wallpaper doomfire
   ./manjaro-sl.sh --profile ~/.config/manjaro-sl/profile --apply
 EOF
@@ -87,14 +84,13 @@ for arg in "$@"; do
   esac
 done
 
-for m in common packages suckless configure ly debloat tweaks wallpaper aur; do
+for m in common packages suckless configure ly wallpaper aur; do
   source "$REPO_ROOT/lib/$m.sh"
 done
 
 # Legacy globals consumed by the modules sourced above (configure_*,
-# ensure_recommended_packages, detect_and_remove_old_de, ...). Defaults
-# mirror build_suckless.sh so those functions behave the same when driven
-# from here.
+# ensure_recommended_packages, ...). Defaults mirror build_suckless.sh so
+# those functions behave the same when driven from here.
 ACCEPT_DEFAULTS=${ACCEPT_DEFAULTS:-0}
 SLSTATUS_INTERFACE=${SLSTATUS_INTERFACE:-}
 BATTERY_CHOICE=${BATTERY_CHOICE:-}
@@ -102,7 +98,6 @@ BAR_COLOR=${BAR_COLOR:-}
 MODKEY_CHOICE=${MODKEY_CHOICE:-}
 COPY_XINIT=${COPY_XINIT:-}
 COPY_DESKTOP=${COPY_DESKTOP:-}
-REMOVE_OLD_DE=${REMOVE_OLD_DE:-}
 CHECK_PACKAGES=${CHECK_PACKAGES:-1}
 declare -ga COMPONENTS=()
 
@@ -132,7 +127,7 @@ EXISTING_SETUP=0
 SETUP_BANNER=""
 
 # section_enabled SECTION — true if --only wasn't used at all, or SECTION is
-# one of the values it was given. Sections: install|debloat|tweaks|dwm|ly.
+# one of the values it was given. Sections: install|dwm|ly.
 section_enabled() {
   local sect="$1" s
   [ ${#ONLY_SECTIONS[@]} -eq 0 ] && return 0
@@ -181,26 +176,6 @@ sanity_checks() {
       TUI_ACTIVE=0
     fi
   fi
-}
-
-# Loops a tui_menu over the four debloat categories + old DE/DM removal.
-debloat_menu() {
-  while true; do
-    local pick
-    pick=$(tui_menu "Debloat Manjaro" "Category" \
-      manjaro "Manjaro-branded packages" apps "Pre-installed apps" \
-      printing "Printer/scanner stack" bluetooth "Bluetooth stack" \
-      dedm "Old desktop environments / display managers" back "Back") || return 0
-    case "$pick" in
-      manjaro)   debloat_screen "Manjaro packages" "$REPO_ROOT/data/debloat-manjaro.list" ;;
-      apps)      debloat_screen "Pre-installed apps" "$REPO_ROOT/data/debloat-apps.list" ;;
-      printing)  debloat_screen "Printing stack" "$REPO_ROOT/data/debloat-printing.list" ;;
-      bluetooth) debloat_screen "Bluetooth stack" "$REPO_ROOT/data/debloat-bluetooth.list" ;;
-      dedm)      debloat_screen "Old DEs" "$REPO_ROOT/data/de.list"
-                 debloat_screen "Old DMs" "$REPO_ROOT/data/dm.list" ;;
-      back|"")   return 0 ;;
-    esac
-  done
 }
 
 # Loops a tui_menu over the desktop-side settings: which components get
@@ -571,19 +546,6 @@ detect_existing_setup() {
 preview_text() {
   local out="" list key
 
-  # NOTE: debloat_collect's own return status reflects whatever its last
-  # loop iteration's test evaluated to (not necessarily 0), so it must be
-  # consumed via process substitution rather than `$(debloat_collect | ...)`
-  # — under `set -euo pipefail` the latter trips -e on the assignment even
-  # though every package name was collected correctly.
-  list=""
-  local pkg
-  while IFS= read -r pkg; do
-    [ -n "$pkg" ] && list+="$pkg "
-  done < <(debloat_collect)
-  list=${list% }
-  out+="REMOVE:\n  ${list:-(none)}\n\n"
-
   list=""
   for key in "${!SELECTIONS[@]}"; do
     [[ "$key" == install/* ]] && [ "${SELECTIONS[$key]}" = on ] && list+="${key#install/} "
@@ -618,13 +580,6 @@ preview_text() {
   done
   list=${list% }
   out+="CONFIGURE:\n  ${list:-(none)}\n\n"
-
-  list=""
-  for key in "${!SELECTIONS[@]}"; do
-    [[ "$key" == tweak/* ]] && [ "${SELECTIONS[$key]}" = on ] && list+="${key#tweak/} "
-  done
-  list=${list% }
-  out+="TWEAKS:\n  ${list:-(none)}\n\n"
 
   local wp; wp=$(state_get dwm/wallpaper)
   [ "$wp" = "off" ] && wp="none"
@@ -753,7 +708,7 @@ sync_ly_wallpaper() {
   fi
 }
 
-# Debloat/tweaks/install-packages route every mutating command through
+# Install-packages and enable-networking route every mutating command through
 # run_mut, so --dry-run is safe there already. Build/Configure/Ly/Wallpaper
 # don't (they write dwm/slstatus config.h, ~/.xinitrc, /etc/ly/config.ini,
 # and toggle systemd units directly via run_with_privilege/python3/sudo) —
@@ -790,24 +745,26 @@ wallpaper_apply_maybe() {
   wallpaper_apply
 }
 
-# Fixed order: debloat → tweaks → install → build → configure → ly →
-# wallpaper → summary, each via run_step so failures offer continue/abort.
-# Each step is additionally gated by section_enabled (see --only), the
-# install step by SKIP_PACKAGES (see --skip-packages), and the Ly step
-# additionally by ly_step_should_run (see N2 comment above) so a bare
-# per-component rebuild that doesn't include dwm doesn't also flip the
-# system's display manager.
+# Fixed order: configure → install → networking → build → ly → wallpaper →
+# summary, each via run_step so failures offer continue/abort. Each step is
+# additionally gated by section_enabled (see --only), the install step by
+# SKIP_PACKAGES (see --skip-packages), and the Ly step additionally by
+# ly_step_should_run (see N2 comment above) so a bare per-component rebuild
+# that doesn't include dwm doesn't also flip the system's display manager.
 apply_all() {
   ACCEPT_DEFAULTS=1
   sync_ly_wallpaper
-  section_enabled debloat && run_step "Debloat"           debloat_apply
-  section_enabled tweaks  && run_step "System tweaks"     tweaks_apply
   # Configure BEFORE Build: config.h edits (bar color, modkey, interface,
   # battery) are compiled into the binaries — building first ships stale
   # settings (the original build_suckless.sh configured first too).
   section_enabled dwm && run_step "Configure" apply_configuration_maybe
   if section_enabled install; then
     [ "$SKIP_PACKAGES" -eq 0 ] && run_step "Install packages" install_selected_packages
+    # System Tweaks used to enable NetworkManager; with that section gone,
+    # enable it here so networking (and the nm-applet tray icon in the dwm
+    # systray) actually works on a fresh machine. Skipped alongside the
+    # package install, since it's part of getting the base system usable.
+    [ "$SKIP_PACKAGES" -eq 0 ] && run_step "Enable networking" ensure_networkmanager_enabled
     run_step "AUR builds" aur_apply_maybe
     run_step "Build components" build_selected_components_maybe
   fi
@@ -826,13 +783,10 @@ main_menu() {
     local pick
     pick=$(tui_menu "manjaro-sl" "$SETUP_BANNER — Main menu" \
       desktop "Desktop Setup"  appearance "Appearance" \
-      debloat "Debloat Manjaro"  tweaks "System Tweaks" \
       preset "Presets"  apply "Preview & Apply"  quit "Quit") || pick=quit
     case "$pick" in
       desktop)    desktop_setup_menu ;;
       appearance) appearance_menu ;;
-      debloat)    debloat_menu ;;
-      tweaks)     tweaks_screen ;;
       preset)     local p; p=$(tui_radiolist "Preset" "Choose" \
                     recommended       "Recommended (keeps your changes)"        on \
                     minimal           "Minimal (keeps your changes)"            off \
@@ -872,8 +826,8 @@ parse_args() {
       --only)
         [ $# -ge 2 ] || { echo "Error: --only requires a value." >&2; exit 1; }
         case "$2" in
-          install|debloat|tweaks|dwm|ly) ONLY_SECTIONS+=("$2") ;;
-          *) echo "Error: --only must be one of install|debloat|tweaks|dwm|ly." >&2; exit 1 ;;
+          install|dwm|ly) ONLY_SECTIONS+=("$2") ;;
+          *) echo "Error: --only must be one of install|dwm|ly." >&2; exit 1 ;;
         esac
         shift
         ;;
@@ -922,19 +876,6 @@ parse_args() {
         esac
         shift
         ;;
-      --remove-de)
-        # Reuses preset_apply minimal's guarded pattern: only mark old
-        # DEs/DMs actually installed, and stay a no-op without pacman.
-        if declare -F debloat_installed_from >/dev/null && command -v pacman >/dev/null 2>&1; then
-          local f
-          for f in "$REPO_ROOT/data/de.list" "$REPO_ROOT/data/dm.list"; do
-            while IFS='|' read -r name desc state; do state_set "debloat/$name" on; done < <(debloat_installed_from "$f")
-          done
-        fi
-        ;;
-      --no-remove-de)
-        echo "Note: --no-remove-de is the default; old DEs/DMs are left untouched unless --remove-de is passed."
-        ;;
       -y|--accept-defaults)
         Y_FLAG=1
         LEGACY_Y=1
@@ -956,14 +897,8 @@ parse_args() {
         COPY_DESKTOP=no
         ;;
       --enable-*|--disable-*)
-        local flag mode slug found=0 f
+        local flag mode slug found=0
         flag=${1#--}; mode=${flag%%-*}; slug=${flag#*-}
-        for f in "$REPO_ROOT"/data/debloat-*.list; do
-          if list_entries "$f" | cut -d'|' -f1 | grep -qx "$slug"; then
-            state_set "debloat/$slug" "$([ "$mode" = enable ] && echo on || echo off)"
-            found=1
-          fi
-        done
         if list_entries "$REPO_ROOT/data/install-recommended.list" | cut -d'|' -f1 | grep -qx "$slug"; then
           state_set "install/$slug" "$([ "$mode" = enable ] && echo on || echo off)"
           found=1

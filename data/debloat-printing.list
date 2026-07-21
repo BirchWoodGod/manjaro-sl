@@ -1,9 +1,0 @@
-cups|Print server|off
-cups-pdf|Print-to-PDF|off
-cups-filters|Print filters|off
-hplip|HP printer drivers|off
-system-config-printer|Printer settings GUI|off
-simple-scan|Scanner app|off
-sane|Scanner backend|off
-print-manager|Print manager (KDE)|off
-manjaro-printer|Manjaro printing meta|off

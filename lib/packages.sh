@@ -44,6 +44,29 @@ BUILD_PACKAGES=(
   python
 )
 
+# Enable (and start) NetworkManager so networking works out of the box and
+# the nm-applet tray icon in the dwm systray has a service to talk to. The
+# old "System Tweaks" section used to do this; folded into the install path
+# now that that section is gone. Routed through run_mut so --dry-run only
+# prints. A no-op with a warning when pacman/networkmanager isn't present.
+ensure_networkmanager_enabled() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "Warning: systemctl not found; skipping NetworkManager enable." >&2
+    return
+  fi
+  # Under --dry-run just print the command (nothing was really installed, so
+  # probing the live unit would give a misleading preview). On a real run,
+  # skip gracefully when the unit is absent — e.g. the minimal preset doesn't
+  # install networkmanager — rather than hard-failing the whole apply.
+  if [ "${DRY_RUN:-0}" -eq 0 ] \
+    && ! systemctl list-unit-files NetworkManager.service --no-legend 2>/dev/null | grep -q .; then
+    echo "Warning: NetworkManager.service not found (is networkmanager installed?); skipping enable." >&2
+    return
+  fi
+  echo "Enabling NetworkManager.service (needed for networking + nm-applet)."
+  run_mut sudo: systemctl enable --now NetworkManager.service
+}
+
 ensure_multilib_repo_enabled() {
   local pacman_conf="/etc/pacman.conf"
 
