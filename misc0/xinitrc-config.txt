@@ -9,6 +9,9 @@ xset -dpms
 xset s off
 
 slstatus &
-nm-applet &
+# Delay so dwm (which hosts the systray) wins the race and owns the tray
+# selection before nm-applet looks for it; otherwise the tray icon never
+# embeds and you get an empty, unclickable gap in the bar.
+(sleep 1 && nm-applet) &
 [ -f ~/pictures/wallpaper.jpg ] && feh --bg-scale ~/pictures/wallpaper.jpg &
 exec dwm
