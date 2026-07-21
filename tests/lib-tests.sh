@@ -375,14 +375,14 @@ DRY_RUN=0
 unset -f pacman
 
 # parse_args: legacy flags map onto dwm/* SELECTIONS + globals; --enable-*/
-# --disable-* toggle install/AUR entries by slug; --only is repeatable
+# --disable-* toggle recommended-install entries by slug; --only is repeatable
 # and section_enabled reflects it; --dry-run sets DRY_RUN.
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
   parse_args --interface eth0 --battery --bar-color "#112233" --modkey super \
     --wallpaper doomfire --skip-packages --copy-xinit --no-copy-desktop \
-    --enable-cdesktopenv --disable-feh --only dwm --only ly --dry-run
+    --enable-htop --disable-feh --only dwm --only ly --dry-run
   echo "interface=$(state_get dwm/interface)"
   echo "battery=$(state_get dwm/battery)"
   echo "barcolor=$(state_get dwm/barcolor)"
@@ -391,7 +391,7 @@ out=$(TUI_ACTIVE=0 bash -c '
   echo "skip=$SKIP_PACKAGES"
   echo "copyxinit=$COPY_XINIT"
   echo "copydesktop=$COPY_DESKTOP"
-  echo "cde=$(state_get aur/cdesktopenv)"
+  echo "htop=$(state_get install/htop)"
   echo "feh=$(state_get install/feh)"
   echo "dryrun=$DRY_RUN"
   section_enabled dwm && echo "dwm_section=yes"
@@ -406,7 +406,7 @@ assert_contains "$out" "wallpaper=doomfire"
 assert_contains "$out" "skip=1"
 assert_contains "$out" "copyxinit=yes"
 assert_contains "$out" "copydesktop=no"
-assert_contains "$out" "cde=on"
+assert_contains "$out" "htop=on"
 assert_contains "$out" "feh=off"
 assert_contains "$out" "dryrun=1"
 assert_contains "$out" "dwm_section=yes"
@@ -1203,15 +1203,15 @@ done < <(available_extra_components)
 # WALLPAPER_DESCS (source-assertion via the TUI_ACTIVE=0 plain-prompt
 # fallback, which echoes each checklist row's description to stderr):
 # "1" opens Components, an empty line at the checklist prompt keeps the
-# current (default off) selection, "7" (Back — item 6 is now "Extra
-# software (AUR)", see below) exits the Desktop Setup loop.
+# current (default off) selection, "6" (Back — the last item) exits the
+# Desktop Setup loop.
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
   desktop_setup_menu
 ' <<< "1
 
-7
+6
 " 2>&1)
 assert_contains "$out" "Douay-Rheims Bible terminal reader"
 
@@ -1414,165 +1414,5 @@ assert_ok test -n "$bld_line"
 assert_ok test "$cfg_line" -lt "$bld_line"
 rm -rf "$t_home" "$t_state"
 
-# --- CDE second session via AUR (P5 Task 4, drv/CDE spec §2) --------------
-#
-# Package-name note: the AUR package literally named "cde" is CDEpack (an
-# unrelated tool), not the Common Desktop Environment — the real port is
-# "cdesktopenv" (see lib/aur.sh's header comment). data/aur-optional.list
-# and every slug below use that verified name.
-
-source "$REPO_ROOT/lib/aur.sh"
-
-# data/aur-optional.list parses like every other data file.
-entries=$(list_entries "$REPO_ROOT/data/aur-optional.list")
-assert_contains "$entries" "cdesktopenv|Common Desktop Environment — second login session (AUR source build, slow)|off"
-
-# aur_apply dry-run prints fetch/build commands and executes nothing (brief
-# Step 2's reference test, with the corrected AUR slug).
-declare -gA SELECTIONS=()
-state_set aur/cdesktopenv on
-DRY_RUN=1
-out=$(aur_apply)
-assert_contains "$out" "+ curl"
-assert_contains "$out" "aur.archlinux.org"
-assert_contains "$out" "cdesktopenv"
-assert_contains "$out" "+ makepkg -si --noconfirm --needed"
-assert_fail test -d "$HOME/.cache/manjaro-sl/aur/cdesktopenv"
-
-# Nothing selected -> explicit "no-op" message, not silence.
-declare -gA SELECTIONS=()
-out=$(aur_apply)
-assert_contains "$out" "No AUR software selected."
-DRY_RUN=0
-
-# set -e safety: the `( cd "$dir" 2>/dev/null || [ "$DRY_RUN" -eq 1 ] ;
-# run_mut makepkg ... )` subshell must survive under the SAME `set -euo
-# pipefail` manjaro-sl.sh itself runs under (not just the test harness's
-# looser `set -uo pipefail`) when $dir was never really created (DRY_RUN).
-out=$(bash -c '
-  set -euo pipefail
-  source "'"$REPO_ROOT"'/lib/exec.sh"
-  source "'"$REPO_ROOT"'/lib/state.sh"
-  source "'"$REPO_ROOT"'/lib/aur.sh"
-  REPO_ROOT="'"$REPO_ROOT"'"
-  declare -gA SELECTIONS=()
-  state_set aur/cdesktopenv on
-  DRY_RUN=1
-  aur_apply
-  echo "SURVIVED"
-' 2>&1); rc=$?
-assert_eq "$rc" "0"
-assert_contains "$out" "SURVIVED"
-assert_contains "$out" "+ makepkg -si --noconfirm --needed"
-
-# aur_session_check: only special-cases cdesktopenv; every other name is a
-# no-op (no output, no privileged write attempted).
-out=$(aur_session_check somethingelse)
-assert_eq "$out" ""
-
-# aur_session_check: an existing xsessions entry already matching "cde"
-# (i.e. the AUR package's own shipped cde.desktop) short-circuits — no
-# fallback install attempted.
-ls() { echo "/usr/share/xsessions/cde.desktop"; }
-out=$(aur_session_check cdesktopenv)
-assert_eq "$out" ""
-unset -f ls
-
-# aur_session_check: no matching entry found + DRY_RUN=1 prints the
-# fallback-install note and performs no privileged write.
-ls() { return 1; }
-DRY_RUN=1
-out=$(aur_session_check cdesktopenv)
-assert_contains "$out" "+ install cde.desktop session entry"
-unset -f ls
-DRY_RUN=0
-
-# aur_screen: single-entry checklist wired to user_set (baseline-preset
-# survivable, per USER_TOUCHED — see spec §4). "1" toggles cdesktopenv on.
-out=$(TUI_ACTIVE=0 bash -c '
-  source "'"$REPO_ROOT"'/manjaro-sl.sh"
-  declare -gA SELECTIONS=()
-  aur_screen
-  echo "cde=$(state_get aur/cdesktopenv)"
-  echo "touched=${USER_TOUCHED[aur/cdesktopenv]:-0}"
-' <<< "1
-" 2>&1)
-assert_contains "$out" "cde=on"
-assert_contains "$out" "touched=1"
-
-# aur_screen: empty checklist input (no toggles) leaves it off.
-out=$(TUI_ACTIVE=0 bash -c '
-  source "'"$REPO_ROOT"'/manjaro-sl.sh"
-  declare -gA SELECTIONS=()
-  aur_screen
-  echo "cde=$(state_get aur/cdesktopenv)"
-' <<< "
-" 2>&1)
-assert_contains "$out" "cde=off"
-
-# Desktop Setup menu gains item 6 "Extra software (AUR)" (Back is now 7);
-# picking it opens aur_screen (its own checklist reads the next input line).
-out=$(TUI_ACTIVE=0 bash -c '
-  source "'"$REPO_ROOT"'/manjaro-sl.sh"
-  declare -gA SELECTIONS=()
-  desktop_setup_menu
-' <<< "6
-1
-7
-" 2>&1)
-assert_contains "$out" "Extra software (AUR)"
-assert_contains "$out" "Common Desktop Environment"
-
-# --enable-cdesktopenv / --disable-cdesktopenv reach the aur list, same
-# matcher pattern as install-recommended.list (grep parse_args's
-# --enable-*/--disable-* arm).
-out=$(TUI_ACTIVE=0 bash -c '
-  source "'"$REPO_ROOT"'/manjaro-sl.sh"
-  declare -gA SELECTIONS=()
-  parse_args --enable-cdesktopenv
-  state_get aur/cdesktopenv
-')
-assert_eq "$out" "on"
-out=$(TUI_ACTIVE=0 bash -c '
-  source "'"$REPO_ROOT"'/manjaro-sl.sh"
-  declare -gA SELECTIONS=([aur/cdesktopenv]="on")
-  parse_args --disable-cdesktopenv
-  state_get aur/cdesktopenv
-')
-assert_eq "$out" "off"
-
-# --enable-cdesktopenv reaches apply_all's "AUR builds" step (subprocess,
-# sandboxed HOME/XDG_STATE_HOME, dry-run): with packages NOT skipped, the
-# step actually calls aur_apply and prints its "+" lines.
-t_home=$(mktemp -d); t_state=$(mktemp -d)
-out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
-  --enable-cdesktopenv --dry-run --apply 2>&1); rc=$?
-assert_eq "$rc" "0"
-assert_contains "$out" "AUR builds"
-assert_contains "$out" "+ curl"
-assert_contains "$out" "cdesktopenv"
-rm -rf "$t_home" "$t_state"
-
-# --enable-cdesktopenv + --skip-packages (subprocess, dry-run): AUR builds
-# need base-devel from the Install-packages step, so skipping that step
-# also skips AUR builds with an explanatory note instead of attempting a
-# build without a toolchain present.
-t_home=$(mktemp -d); t_state=$(mktemp -d)
-out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
-  --enable-cdesktopenv --dry-run --apply --skip-packages 2>&1); rc=$?
-assert_eq "$rc" "0"
-assert_contains "$out" "skipping AUR builds"
-assert_fail grep -q '+ curl' <<< "$out"
-rm -rf "$t_home" "$t_state"
-
-# preview_text shows AUR builds (they can take hours — must be visible in
-# the final confirmation) and README documents the drv component
-out=$(TUI_ACTIVE=0 bash -c '
-  source "'"$REPO_ROOT"'/manjaro-sl.sh"
-  declare -gA SELECTIONS=()
-  state_set aur/cdesktopenv on
-  preview_text
-' 2>/dev/null)
-assert_contains "$out" "AUR BUILDS"
-assert_contains "$out" "cdesktopenv"
+# README documents the vendored drv component (upstream link).
 assert_contains "$(cat "$REPO_ROOT/readme.md")" "BryceVandegrift/drv"

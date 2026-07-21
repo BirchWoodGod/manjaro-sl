@@ -48,8 +48,8 @@ Options:
   --wallpaper WP            Set dwm wallpaper animation: 'none' or any built
                             wallpaper (doomfire, xmatrix, xcolormix,
                             xgameoflife, xblackhole, xstarfield, xplasma, xrain, xfireflies)
-  --enable-SLUG             Turn on an install/AUR entry by package name
-  --disable-SLUG            Turn off an install/AUR entry by package name
+  --enable-SLUG             Turn on a recommended-install entry by package name
+  --disable-SLUG            Turn off a recommended-install entry by package name
   --interface IFACE         Set slstatus network interface
   --battery                 Enable the slstatus battery widget
   --no-battery              Disable the slstatus battery widget
@@ -84,7 +84,7 @@ for arg in "$@"; do
   esac
 done
 
-for m in common packages suckless configure ly wallpaper aur; do
+for m in common packages suckless configure ly wallpaper; do
   source "$REPO_ROOT/lib/$m.sh"
 done
 
@@ -192,8 +192,7 @@ desktop_setup_menu() {
       components "Components" modkey "Modkey (super/alt)" \
       barcolor "Selected bar accent color" \
       interface "slstatus network interface" \
-      battery "slstatus battery widget" \
-      aur "Extra software (AUR)" back "Back") || return 0
+      battery "slstatus battery widget" back "Back") || return 0
     case "$pick" in
       components)
         local -a comps=(dwm dmenu st slstatus)
@@ -296,9 +295,6 @@ desktop_setup_menu() {
             ;;
           *) user_set dwm/interface "$sel" ;;
         esac
-        ;;
-      aur)
-        aur_screen
         ;;
       back|"") return 0 ;;
     esac
@@ -560,15 +556,6 @@ preview_text() {
   list=${list% }
   out+="BUILD:\n  ${list:-(none)}\n\n"
 
-  # AUR source builds deserve their own line: they can take hours, so the
-  # user must see them in the final confirmation.
-  list=""
-  for key in "${!SELECTIONS[@]}"; do
-    [[ "$key" == aur/* ]] && [ "${SELECTIONS[$key]}" = on ] && list+="${key#aur/} "
-  done
-  list=${list% }
-  out+="AUR BUILDS (slow, from source):\n  ${list:-(none)}\n\n"
-
   # CONFIGURE covers dwm/* settings other than wallpaper, which gets its own
   # section below (it's applied by wallpaper_apply, not apply_configuration).
   list=""
@@ -765,7 +752,6 @@ apply_all() {
     # systray) actually works on a fresh machine. Skipped alongside the
     # package install, since it's part of getting the base system usable.
     [ "$SKIP_PACKAGES" -eq 0 ] && run_step "Enable networking" ensure_networkmanager_enabled
-    run_step "AUR builds" aur_apply_maybe
     run_step "Build components" build_selected_components_maybe
   fi
   section_enabled ly && ly_step_should_run && run_step "Ly" configure_ly_display_manager_maybe
@@ -895,10 +881,6 @@ parse_args() {
         flag=${1#--}; mode=${flag%%-*}; slug=${flag#*-}
         if list_entries "$REPO_ROOT/data/install-recommended.list" | cut -d'|' -f1 | grep -qx "$slug"; then
           state_set "install/$slug" "$([ "$mode" = enable ] && echo on || echo off)"
-          found=1
-        fi
-        if list_entries "$REPO_ROOT/data/aur-optional.list" | cut -d'|' -f1 | grep -qx "$slug"; then
-          state_set "aur/$slug" "$([ "$mode" = enable ] && echo on || echo off)"
           found=1
         fi
         [ "$found" -eq 0 ] && { echo "Unknown flag: $1" >&2; exit 1; }
