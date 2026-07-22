@@ -17,6 +17,12 @@ settings so you can change just the modkey, bar color, or wallpaper.
 
 ## Quick Start
 
+> **Recommended base install: Manjaro KDE edition.** This tool is developed
+> and tested against Manjaro KDE — it even cleans up KDE leftovers for you
+> (e.g. repointing the light breeze icon theme so tray icons stay visible on
+> the dark dwm bar). Other Arch-based installs work, but KDE is the tested
+> starting point.
+
 ```bash
 git clone https://github.com/BirchWoodGod/manjaro-sl && cd manjaro-sl && ./manjaro-sl.sh
 ```
