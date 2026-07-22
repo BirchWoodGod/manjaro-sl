@@ -44,7 +44,7 @@ until you apply them):
 ```
 manjaro-sl        (banner: "existing setup detected — current settings loaded"
                    or "fresh setup")
-1. Desktop Setup   components checklist + modkey + bar color + interface + battery
+1. Desktop Setup   components checklist + modkey + bar color + interface + battery + xrandr display
 2. Appearance      one animation choice for login screen AND desktop
 3. Preview & Apply
 4. Quit
@@ -59,15 +59,23 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
    Solarized/Nord/Gruvbox presets, plus Custom hex… and Keep current),
    slstatus network interface (radiolist of interfaces detected via `ip`,
    plus Custom… and Keep current — falls back to a plain text box if
-   detection finds nothing), and the battery widget. Wallpaper/animation is
-   not here — it lives in Appearance.
+   detection finds nothing), the battery widget, and **Display resolution
+   (xrandr)** — pick a connected output (detected via `xrandr` when an X
+   session is running) and a resolution (or Auto for the preferred mode),
+   and the chosen `xrandr` call is written into `~/.xinitrc` inside a
+   marked, idempotent block so it applies on every login. A **Custom xrandr
+   args…** entry accepts any raw argument string (multi-monitor layouts,
+   refresh rates like `--rate 144`, scaling); **Remove configured display
+   settings** deletes the block again. With no X session/xrandr available,
+   the picker falls back to a plain text box for raw arguments.
+   Wallpaper/animation is not here — it lives in Appearance.
 2. **Appearance** — a screen for the Ly login-screen animation, an optional
    desktop wallpaper override, and the "Enable Ly on boot" checkbox (see
    [Appearance](#appearance) below for the full mapping and Custom…/override
    behavior).
 3. **Preview & Apply** — shows every queued action, asks for final
    confirmation, then executes configure → install → enable networking →
-   build → Ly → wallpaper in that order, logging each step to
+   build → Ly → display → wallpaper in that order, logging each step to
    `~/.local/state/manjaro-sl/run-<timestamp>.log`. The **Enable networking**
    step enables `NetworkManager.service` so networking (and the `nm-applet`
    tray icon in the dwm systray) works on a fresh machine. The configure step
@@ -300,6 +308,9 @@ Options:
   --no-battery              Disable the slstatus battery widget
   --bar-color COLOR         Hex color for the dwm selected bar
   --modkey KEY              dwm modkey: 'super' or 'alt'
+  --xrandr ARGS             Write an xrandr call into ~/.xinitrc, e.g.
+                            --xrandr "--output HDMI-1 --mode 1920x1080";
+                            'none' removes a previously configured call
   --skip-packages           Skip the recommended/build package install step
                             (also skips enabling NetworkManager)
   --copy-xinit              Copy the xinitrc helper to ~/.xinitrc
@@ -318,6 +329,7 @@ Run `./manjaro-sl.sh --help` for the full, authoritative flag list.
 ./manjaro-sl.sh --interface wlan0 --battery
 ./manjaro-sl.sh --only dwm --dry-run --apply
 ./manjaro-sl.sh --wallpaper xmatrix
+./manjaro-sl.sh --xrandr "--output HDMI-1 --mode 1920x1080 --rate 144" --only dwm --apply
 ./manjaro-sl.sh --profile ~/.config/manjaro-sl/profile --apply
 ```
 
@@ -326,8 +338,9 @@ Run `./manjaro-sl.sh --help` for the full, authoritative flag list.
 `--dry-run` makes the **install packages** and **enable networking** steps
 print the exact `pacman`/`systemctl` commands they would run instead of
 executing them — safe to use for a preview on a real machine. The **build**,
-**configure**, **Ly**, and **wallpaper** steps write files and touch services
-directly rather than going through the same dry-run-aware command wrapper, so
+**configure**, **Ly**, **display**, and **wallpaper** steps write files and
+touch services directly rather than going through the same dry-run-aware
+command wrapper, so
 under `--dry-run` they are **skipped entirely** with a `[dry-run] skipping
 <step>` notice — they are not simulated. This is why `--preset ... --dry-run
 --apply` is the safe way to preview a run end-to-end: every step that would

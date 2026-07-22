@@ -1253,15 +1253,15 @@ done < <(available_extra_components)
 # WALLPAPER_DESCS (source-assertion via the TUI_ACTIVE=0 plain-prompt
 # fallback, which echoes each checklist row's description to stderr):
 # "1" opens Components, an empty line at the checklist prompt keeps the
-# current (default off) selection, "6" (Back — the last item) exits the
-# Desktop Setup loop.
+# current (default off) selection, "7" (Back — the last item, shifted from 6
+# when the Display item was added) exits the Desktop Setup loop.
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
   desktop_setup_menu
 ' <<< "1
 
-6
+7
 " 2>&1)
 assert_contains "$out" "Douay-Rheims Bible terminal reader"
 
@@ -1300,7 +1300,7 @@ assert_contains "$interface_case" 'detect_net_interfaces'
 assert_eq "$(echo "$interface_case" | grep -ci 'auto-detect')" "0"
 
 # Desktop Setup tui_menu tag order: components(1) modkey(2) barcolor(3)
-# interface(4) battery(5) back(6). Each block below documents its exact
+# interface(4) battery(5) display(6) back(7). Each block below documents its exact
 # keystroke sequence (TUI_ACTIVE=0 fallback prompts all `read` from fd 0 in
 # sequence, one line per prompt; a trailing EOF after the last
 # state-changing pick makes the outer `while true` re-read hit "back" for
@@ -1466,3 +1466,179 @@ rm -rf "$t_home" "$t_state"
 
 # README documents the vendored drv component (upstream link).
 assert_contains "$(cat "$REPO_ROOT/readme.md")" "BryceVandegrift/drv"
+
+# --- Display (xrandr) subsystem -------------------------------------------
+
+source "$REPO_ROOT/lib/display.sh"
+declare -gA SELECTIONS=()
+OLD_HOME=$HOME
+export HOME=$(mktemp -d)
+
+# unset dwm/xrandr: apply is a no-op — never touches ~/.xinitrc
+display_apply
+assert_fail test -e "$HOME/.xinitrc"
+
+# an args value writes the marked block with the xrandr call
+state_set dwm/xrandr "--output HDMI-1 --mode 1920x1080"
+display_apply
+assert_contains "$(cat "$HOME/.xinitrc")" "# >>> manjaro-sl display >>>"
+assert_contains "$(cat "$HOME/.xinitrc")" "xrandr --output HDMI-1 --mode 1920x1080"
+
+# idempotent: re-applying with new args replaces the block in place
+state_set dwm/xrandr "--output HDMI-1 --auto"
+display_apply
+assert_eq "$(grep -c 'manjaro-sl display >>>' "$HOME/.xinitrc")" "1"
+assert_contains "$(cat "$HOME/.xinitrc")" "xrandr --output HDMI-1 --auto"
+assert_eq "$(grep -c -- '--mode 1920x1080' "$HOME/.xinitrc")" "0"
+
+# none removes the block
+state_set dwm/xrandr none
+display_apply
+assert_eq "$(grep -c 'manjaro-sl display' "$HOME/.xinitrc" || true)" "0"
+
+# the display block lands BEFORE the wallpaper block (the wallpaper programs
+# size themselves to the root window at startup, so resolution goes first),
+# and the insert-before path preserves the execute bit like wallpaper's does
+declare -gA SELECTIONS=()
+printf '#!/usr/bin/env bash\nexec dwm\n' > "$HOME/.xinitrc"
+chmod 755 "$HOME/.xinitrc"
+state_set dwm/wallpaper doomfire
+wallpaper_apply
+state_set dwm/xrandr "--output HDMI-1 --mode 1920x1080"
+display_apply
+dp_line=$(grep -n 'manjaro-sl display >>>' "$HOME/.xinitrc" | cut -d: -f1)
+wp_line=$(grep -n 'manjaro-sl wallpaper >>>' "$HOME/.xinitrc" | cut -d: -f1)
+assert_ok test -n "$dp_line"
+assert_ok test -n "$wp_line"
+assert_ok test "$dp_line" -lt "$wp_line"
+assert_eq "$(grep -c 'manjaro-sl display >>>' "$HOME/.xinitrc")" "1"
+assert_ok test -x "$HOME/.xinitrc"
+
+HOME=$OLD_HOME
+
+# detect_xrandr_outputs / detect_xrandr_modes parse (mocked) xrandr output:
+# connected outputs only, and only the picked output's mode lines
+xrandr() { printf 'Screen 0: minimum 320 x 200\nHDMI-1 connected primary 1920x1080+0+0 (normal) 509mm x 286mm\n   1920x1080     60.00*+  144.00\n   1280x720      60.00\neDP-1 connected 1366x768+0+0\n   1366x768      60.06*+\nDP-1 disconnected (normal)\n'; }
+outs=$(DISPLAY=:0 detect_xrandr_outputs | tr '\n' ' ')
+assert_eq "$outs" "HDMI-1 eDP-1 "
+modes=$(DISPLAY=:0 detect_xrandr_modes HDMI-1 | tr '\n' ' ')
+assert_eq "$modes" "1920x1080 1280x720 "
+# no DISPLAY (no running X session) -> detection is empty, not an error
+assert_eq "$(DISPLAY= detect_xrandr_outputs | wc -c)" "0"
+unset -f xrandr
+
+# Desktop Setup "Display (xrandr)" leaf, guided path: tag 6 opens it; with a
+# mocked xrandr the output radiolist is HDMI-1(1) custom(2) none(3) keep(4);
+# picking HDMI-1 then mode tag 2 (auto(1) 1920x1080(2) 1280x720(3)) stores
+# the full --output/--mode argument string.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  DISPLAY=:0
+  xrandr() { printf "HDMI-1 connected primary 1920x1080+0+0\n   1920x1080     60.00*+  144.00\n   1280x720      60.00\n"; }
+  desktop_setup_menu
+  echo "xr=$(state_get dwm/xrandr)"
+' <<< "6
+1
+2
+")
+assert_contains "$out" "xr=--output HDMI-1 --mode 1920x1080"
+
+# guided path, mode tag 1 (auto) stores --auto
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  DISPLAY=:0
+  xrandr() { printf "HDMI-1 connected primary 1920x1080+0+0\n   1920x1080     60.00*+\n"; }
+  desktop_setup_menu
+  echo "xr=$(state_get dwm/xrandr)"
+' <<< "6
+1
+1
+")
+assert_contains "$out" "xr=--output HDMI-1 --auto"
+
+# keep (tag 4) leaves state genuinely untouched, same rule as the other
+# pickers
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  DISPLAY=:0
+  xrandr() { printf "HDMI-1 connected primary 1920x1080+0+0\n   1920x1080     60.00*+\n"; }
+  desktop_setup_menu
+  if [ -n "${SELECTIONS[dwm/xrandr]+x}" ]; then echo "set=yes"; else echo "set=no"; fi
+' <<< "6
+4
+")
+assert_contains "$out" "set=no"
+
+# no detection (DISPLAY empty) falls back to a raw-arguments text box
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  DISPLAY=
+  desktop_setup_menu
+  echo "xr=$(state_get dwm/xrandr)"
+' <<< "6
+--output HDMI-1 --mode 1920x1080 --rate 144
+")
+assert_contains "$out" "xr=--output HDMI-1 --mode 1920x1080 --rate 144"
+
+# --xrandr flag stores the argument string verbatim (spaces intact)
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  parse_args --xrandr "--output HDMI-1 --rate 144"
+  state_get dwm/xrandr
+')
+assert_eq "$out" "--output HDMI-1 --rate 144"
+
+# --xrandr without a value errors out
+out=$("$REPO_ROOT/manjaro-sl.sh" --xrandr 2>&1); rc=$?
+assert_eq "$rc" "1"; assert_contains "$out" "--xrandr requires"
+
+# --help advertises the flag
+assert_contains "$("$REPO_ROOT/manjaro-sl.sh" --help 2>&1)" "--xrandr ARGS"
+
+# preview_text: a set dwm/xrandr renders in its own DISPLAY section, not
+# under CONFIGURE; unset renders as "(unchanged)"
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  state_set dwm/xrandr "--output HDMI-1 --mode 1920x1080"
+  preview_text
+')
+assert_contains "$out" "DISPLAY:"
+assert_contains "$out" "xrandr --output HDMI-1 --mode 1920x1080"
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  preview_text
+')
+assert_contains "$out" "DISPLAY:"
+assert_contains "$out" "(unchanged)"
+
+# detect_existing_setup reads a wired display block back into dwm/xrandr
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  export HOME=$(mktemp -d)
+  {
+    printf "# >>> manjaro-sl display >>>\n"
+    printf "xrandr --output HDMI-1 --mode 1920x1080\n"
+    printf "# <<< manjaro-sl display <<<\n"
+    printf "exec dwm\n"
+  } > "$HOME/.xinitrc"
+  LY_CONFIG_OVERRIDE=/nonexistent DWM_CHECK_OVERRIDE=missing detect_existing_setup >/dev/null 2>&1
+  echo "xr=$(state_get dwm/xrandr)"
+')
+assert_contains "$out" "xr=--output HDMI-1 --mode 1920x1080"
+
+# end-to-end dry-run: the Display step is skipped-not-simulated like the
+# other file-writing steps
+t_home=$(mktemp -d); t_state=$(mktemp -d)
+out=$(HOME="$t_home" XDG_STATE_HOME="$t_state" "$REPO_ROOT/manjaro-sl.sh" \
+  --xrandr "--output HDMI-1 --auto" --dry-run --apply --skip-packages 2>&1); rc=$?
+assert_eq "$rc" "0"
+assert_contains "$out" "[dry-run] skipping Display"
+rm -rf "$t_home" "$t_state"

@@ -55,6 +55,9 @@ Options:
   --no-battery              Disable the slstatus battery widget
   --bar-color COLOR         Hex color for the dwm selected bar
   --modkey KEY              dwm modkey: 'super' or 'alt'
+  --xrandr ARGS             Write an xrandr call into ~/.xinitrc, e.g.
+                            --xrandr "--output HDMI-1 --mode 1920x1080";
+                            'none' removes a previously configured call
   --skip-packages           Skip the recommended/build package install step
                             (also skips enabling NetworkManager)
   --copy-xinit              Copy the xinitrc helper to ~/.xinitrc
@@ -84,7 +87,7 @@ for arg in "$@"; do
   esac
 done
 
-for m in common packages suckless configure ly wallpaper; do
+for m in common packages suckless configure ly wallpaper display; do
   source "$REPO_ROOT/lib/$m.sh"
 done
 
@@ -192,7 +195,8 @@ desktop_setup_menu() {
       components "Components" modkey "Modkey (super/alt)" \
       barcolor "Selected bar accent color" \
       interface "slstatus network interface" \
-      battery "slstatus battery widget" back "Back") || return 0
+      battery "slstatus battery widget" \
+      display "Display resolution (xrandr)" back "Back") || return 0
     case "$pick" in
       components)
         local -a comps=(dwm dmenu st slstatus)
@@ -294,6 +298,45 @@ desktop_setup_menu() {
             [ -n "$sel" ] && user_set dwm/interface "$sel"
             ;;
           *) user_set dwm/interface "$sel" ;;
+        esac
+        ;;
+      display)
+        local cur sel
+        cur=$(state_get dwm/xrandr); [ "$cur" = off ] && cur=""
+        local -a outs=()
+        local o
+        while IFS= read -r o; do outs+=("$o"); done < <(detect_xrandr_outputs)
+        if [ ${#outs[@]} -eq 0 ]; then
+          # No running X session / no xrandr — raw-arguments fallback, same
+          # shape as the interface picker's no-detection path.
+          sel=$(tui_input "Display (xrandr)" "No outputs detected; enter raw xrandr arguments ('none' removes a configured call)" "$cur") || continue
+          [ -n "$sel" ] && user_set dwm/xrandr "$sel"
+          continue
+        fi
+        local -a o_args=()
+        for o in "${outs[@]}"; do o_args+=("$o" "Connected output" off); done
+        o_args+=(custom "Custom xrandr args…" off \
+                 none "Remove configured display settings" off \
+                 keep "Keep current (${cur:-none})" on)
+        sel=$(tui_radiolist "Display (xrandr)" "Pick an output to set its resolution (written to ~/.xinitrc)" "${o_args[@]}") || continue
+        case "$sel" in
+          keep|"") ;;
+          none) user_set dwm/xrandr none ;;
+          custom)
+            sel=$(tui_input "Display (xrandr)" "xrandr arguments (everything after 'xrandr', e.g. --output HDMI-1 --mode 1920x1080 --rate 144)" "$cur") || continue
+            [ -n "$sel" ] && user_set dwm/xrandr "$sel"
+            ;;
+          *)
+            local output="$sel" m
+            local -a m_args=(auto "Auto (preferred mode)" on)
+            while IFS= read -r m; do m_args+=("$m" "Mode" off); done < <(detect_xrandr_modes "$output")
+            sel=$(tui_radiolist "Resolution" "Mode for $output (refresh rate via Custom xrandr args…)" "${m_args[@]}") || continue
+            if [ "$sel" = auto ] || [ -z "$sel" ]; then
+              user_set dwm/xrandr "--output $output --auto"
+            else
+              user_set dwm/xrandr "--output $output --mode $sel"
+            fi
+            ;;
         esac
         ;;
       back|"") return 0 ;;
@@ -522,6 +565,14 @@ detect_existing_setup() {
   else
     state_set dwm/wallpaper none
   fi
+
+  # A configured display block's own `xrandr ARGS` line is authoritative for
+  # the current xrandr settings; no block means dwm/xrandr stays unset (the
+  # "leave ~/.xinitrc alone" sentinel — see display_apply).
+  local xr_line
+  xr_line=$(sed -n "\|^${DP_BLOCK_START}\$|,\|^${DP_BLOCK_END}\$|p" "$HOME/.xinitrc" 2>/dev/null | sed -n 's/^xrandr //p' | head -n1 || true)
+  [ -n "$xr_line" ] && state_set dwm/xrandr "$xr_line"
+
   [ -f "$HOME/.xinitrc" ] && found_signal=1
 
   if [ "${DWM_CHECK_OVERRIDE:-}" != missing ] && command -v dwm >/dev/null 2>&1; then
@@ -556,12 +607,14 @@ preview_text() {
   list=${list% }
   out+="BUILD:\n  ${list:-(none)}\n\n"
 
-  # CONFIGURE covers dwm/* settings other than wallpaper, which gets its own
-  # section below (it's applied by wallpaper_apply, not apply_configuration).
+  # CONFIGURE covers dwm/* settings other than wallpaper and xrandr, which
+  # get their own sections below (they're applied by wallpaper_apply /
+  # display_apply, not apply_configuration).
   list=""
   for key in "${!SELECTIONS[@]}"; do
     [[ "$key" == dwm/* ]] || continue
     [ "$key" = "dwm/wallpaper" ] && continue
+    [ "$key" = "dwm/xrandr" ] && continue
     [ "${SELECTIONS[$key]}" = "off" ] && continue
     list+="${key#dwm/}=${SELECTIONS[$key]} "
   done
@@ -572,6 +625,14 @@ preview_text() {
   [ "$wp" = "off" ] && wp="none"
   [ "$wp" = "none" ] && wp="(none)"
   out+="WALLPAPER:\n  ${wp}\n\n"
+
+  local xr; xr=$(state_get dwm/xrandr)
+  case "$xr" in
+    off|"") xr="(unchanged)" ;;
+    none)   xr="(remove configured xrandr call)" ;;
+    *)      xr="xrandr $xr" ;;
+  esac
+  out+="DISPLAY:\n  ${xr}\n\n"
 
   local ly_anim; ly_anim=$(state_get ly/animation); [ "$ly_anim" = "off" ] && ly_anim="none"
 
@@ -733,8 +794,13 @@ wallpaper_apply_maybe() {
   wallpaper_apply
 }
 
-# Fixed order: configure → install → networking → build → ly → wallpaper →
-# summary, each via run_step so failures offer continue/abort. Each step is
+display_apply_maybe() {
+  [ "$DRY_RUN" -eq 1 ] && { dry_run_note "Display"; return 0; }
+  display_apply
+}
+
+# Fixed order: configure → install → networking → build → ly → display →
+# wallpaper → summary, each via run_step so failures offer continue/abort. Each step is
 # additionally gated by section_enabled (see --only), the install step by
 # SKIP_PACKAGES (see --skip-packages), and the Ly step additionally by
 # ly_step_should_run (see N2 comment above) so a bare per-component rebuild
@@ -756,6 +822,10 @@ apply_all() {
     run_step "Build components" build_selected_components_maybe
   fi
   section_enabled ly && ly_step_should_run && run_step "Ly" configure_ly_display_manager_maybe
+  # Display before Wallpaper for readability; either order works — the
+  # display block's xinitrc insertion point already lands it above the
+  # wallpaper block (see display_wire_xinitrc).
+  section_enabled dwm && run_step "Display" display_apply_maybe
   section_enabled dwm && run_step "Wallpaper" wallpaper_apply_maybe
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] skipping profile save"
@@ -855,6 +925,11 @@ parse_args() {
           super|alt) state_set dwm/modkey "$2" ;;
           *) echo "Error: --modkey must be 'super' or 'alt'." >&2; exit 1 ;;
         esac
+        shift
+        ;;
+      --xrandr)
+        [ $# -ge 2 ] || { echo "Error: --xrandr requires a value (xrandr arguments, or 'none' to remove)." >&2; exit 1; }
+        state_set dwm/xrandr "$2"
         shift
         ;;
       -y|--accept-defaults)

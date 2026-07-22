@@ -30,7 +30,7 @@ not reintroduce that surface. (Presets themselves still exist, CLI-only, via
 `manjaro-sl.sh` is the orchestrator (arg parsing, TUI menus, the apply
 pipeline). Behavior lives in `lib/*.sh`, sourced in this order:
 `exec state tui` (side-effect-free, sourced before `-h/--help` handling) then
-`common packages suckless configure ly wallpaper`.
+`common packages suckless configure ly wallpaper display`.
 
 - `lib/exec.sh` — `run_mut` (the mutation gate: prints instead of executing
   under `DRY_RUN=1`), `run_step` (per-step logging + continue/abort on failure),
@@ -50,20 +50,24 @@ pipeline). Behavior lives in `lib/*.sh`, sourced in this order:
   (`KNOWN_DISPLAY_MANAGERS`).
 - `lib/wallpaper.sh` — generates `~/.config/manjaro-sl/wallpaper.sh` and wires a
   marked block into `~/.xinitrc`.
+- `lib/display.sh` — wires an `xrandr` call into `~/.xinitrc` (own marked
+  block, inserted above the wallpaper block); output/mode detection for the
+  TUI picker. `dwm/xrandr` sentinel: unset/`off` = don't touch, `none` =
+  remove the block.
 
 ## Selection state & apply pipeline
 
 Every TUI screen and every flag just writes keys into `SELECTIONS`, namespaced:
 `component/*`, `install/*`, `dwm/*` (modkey, barcolor, interface, battery,
-wallpaper), `ly/*` (enable, animation, match_wallpaper). Presets and
+wallpaper, xrandr), `ly/*` (enable, animation, match_wallpaper). Presets and
 `detect_existing_setup` prefill it; `preview_text` renders it; `apply_all`
 consumes it.
 
 `apply_all` runs a fixed order, each step via `run_step`:
 **Configure → Install packages → Enable networking → Build components → Ly →
-Wallpaper → save profile**. Gating:
-- `section_enabled` implements `--only install|dwm|ly` (Configure/Wallpaper are
-  `dwm`; Install/networking/Build are `install`; Ly is `ly`).
+Display → Wallpaper → save profile**. Gating:
+- `section_enabled` implements `--only install|dwm|ly` (Configure/Display/
+  Wallpaper are `dwm`; Install/networking/Build are `install`; Ly is `ly`).
 - Install packages **and** Enable networking are additionally gated by
   `--skip-packages`.
 - The Ly step is gated by `ly_step_should_run` so a bare per-component rebuild
