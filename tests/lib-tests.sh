@@ -1516,21 +1516,48 @@ assert_ok test -x "$HOME/.xinitrc"
 
 HOME=$OLD_HOME
 
-# detect_xrandr_outputs / detect_xrandr_modes parse (mocked) xrandr output:
-# connected outputs only, and only the picked output's mode lines
+# detect_xrandr_outputs / modes / rates / current parse (mocked) xrandr
+# output: connected outputs only, only the picked output's mode lines, the
+# picked mode's rates with */+ markers stripped, and the *-marked current
+# mode+rate pair
 xrandr() { printf 'Screen 0: minimum 320 x 200\nHDMI-1 connected primary 1920x1080+0+0 (normal) 509mm x 286mm\n   1920x1080     60.00*+  144.00\n   1280x720      60.00\neDP-1 connected 1366x768+0+0\n   1366x768      60.06*+\nDP-1 disconnected (normal)\n'; }
 outs=$(DISPLAY=:0 detect_xrandr_outputs | tr '\n' ' ')
 assert_eq "$outs" "HDMI-1 eDP-1 "
 modes=$(DISPLAY=:0 detect_xrandr_modes HDMI-1 | tr '\n' ' ')
 assert_eq "$modes" "1920x1080 1280x720 "
+rates=$(DISPLAY=:0 detect_xrandr_rates HDMI-1 1920x1080 | tr '\n' ' ')
+assert_eq "$rates" "60.00 144.00 "
+rates=$(DISPLAY=:0 detect_xrandr_rates eDP-1 1366x768 | tr '\n' ' ')
+assert_eq "$rates" "60.06 "
+assert_eq "$(DISPLAY=:0 detect_xrandr_current HDMI-1)" "1920x1080 60.00"
+assert_eq "$(DISPLAY=:0 detect_xrandr_current eDP-1)" "1366x768 60.06"
 # no DISPLAY (no running X session) -> detection is empty, not an error
 assert_eq "$(DISPLAY= detect_xrandr_outputs | wc -c)" "0"
 unset -f xrandr
 
-# Desktop Setup "Display (xrandr)" leaf, guided path: tag 6 opens it; with a
-# mocked xrandr the output radiolist is HDMI-1(1) custom(2) none(3) keep(4);
-# picking HDMI-1 then mode tag 2 (auto(1) 1920x1080(2) 1280x720(3)) stores
-# the full --output/--mode argument string.
+# segment plumbing: an existing dwm/xrandr string seeds per-output segments,
+# and rebuilding recomposes the identical (sorted) string
+declare -gA SELECTIONS=()
+state_set dwm/xrandr "--output HDMI-1 --mode 1920x1080 --rate 144.00 --output eDP-1 --off"
+display_seed_segments
+assert_eq "$(state_get xrandr/HDMI-1)" "--mode 1920x1080 --rate 144.00"
+assert_eq "$(state_get xrandr/eDP-1)" "--off"
+display_rebuild_args
+assert_eq "$(state_get dwm/xrandr)" "--output HDMI-1 --mode 1920x1080 --rate 144.00 --output eDP-1 --off"
+# seeding never overwrites segments already being edited this session
+state_set dwm/xrandr "--output HDMI-1 --auto"
+display_seed_segments
+assert_eq "$(state_get xrandr/eDP-1)" "--off"
+# clear drops every xrandr/* key
+display_clear_segments
+assert_eq "$(printf '%s\n' "${!SELECTIONS[@]}" | grep -c '^xrandr/')" "0"
+
+# Desktop Setup "Display (xrandr)" leaf, guided single-monitor path: tag 6
+# opens the per-monitor menu — HDMI-1(1) custom(2) none(3) back(4). Picking
+# HDMI-1 opens the resolution radiolist (auto(1) 1920x1080(2) 1280x720(3)
+# off_out(4)); a specific resolution then opens its refresh-rate radiolist
+# (auto(1) 60.00(2) 144.00(3)). Single monitor => no position/primary
+# prompts. Keystrokes: 6=display, 1=HDMI-1, 2=1920x1080, 3=144.00.
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
@@ -1541,10 +1568,11 @@ out=$(TUI_ACTIVE=0 bash -c '
 ' <<< "6
 1
 2
+3
 ")
-assert_contains "$out" "xr=--output HDMI-1 --mode 1920x1080"
+assert_contains "$out" "xr=--output HDMI-1 --mode 1920x1080 --rate 144.00"
 
-# guided path, mode tag 1 (auto) stores --auto
+# guided path, resolution tag 1 (auto) stores --auto and skips the rate list
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
@@ -1558,8 +1586,24 @@ out=$(TUI_ACTIVE=0 bash -c '
 ")
 assert_contains "$out" "xr=--output HDMI-1 --auto"
 
-# keep (tag 4) leaves state genuinely untouched, same rule as the other
-# pickers
+# rate tag 1 (auto) stores just --mode, no --rate
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  DISPLAY=:0
+  xrandr() { printf "HDMI-1 connected primary 1920x1080+0+0\n   1920x1080     60.00*+  144.00\n   1280x720      60.00\n"; }
+  desktop_setup_menu
+  echo "xr=$(state_get dwm/xrandr)"
+' <<< "6
+1
+3
+1
+")
+assert_contains "$out" "xr=--output HDMI-1 --mode 1280x720"
+assert_eq "$(echo "$out" | grep -c -- '--rate')" "0"
+
+# back (tag 4 with one monitor) leaves state genuinely untouched, same rule
+# as the other pickers
 out=$(TUI_ACTIVE=0 bash -c '
   source "'"$REPO_ROOT"'/manjaro-sl.sh"
   declare -gA SELECTIONS=()
@@ -1571,6 +1615,69 @@ out=$(TUI_ACTIVE=0 bash -c '
 4
 ")
 assert_contains "$out" "set=no"
+
+# Multi-monitor guided path: two connected outputs, so the per-monitor menu
+# is HDMI-1(1) eDP-1(2) custom(3) none(4) back(5), and configuring an output
+# adds the position radiolist (keep(1) right-(2) left-(3) above-(4) below-(5)
+# same-(6) vs the one other monitor) and a primary yes/no. Flow: configure
+# eDP-1 as 1366x768 @ 60.06, left of HDMI-1, primary (keystrokes 2,2,2,3,y);
+# then HDMI-1 as auto, keep position, not primary (1,1,1,n). The composed
+# dwm/xrandr joins both segments in sorted output order.
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  DISPLAY=:0
+  xrandr() { printf "HDMI-1 connected primary 1920x1080+0+0\n   1920x1080     60.00*+  144.00\neDP-1 connected 1366x768+0+0\n   1366x768      60.06*+\n"; }
+  desktop_setup_menu
+  echo "xr=$(state_get dwm/xrandr)"
+' <<< "6
+2
+2
+2
+3
+y
+1
+1
+1
+n
+")
+assert_contains "$out" "xr=--output HDMI-1 --auto --output eDP-1 --mode 1366x768 --rate 60.06 --left-of HDMI-1 --primary"
+
+# none (tag 4 with two monitors) sets dwm/xrandr=none AND drops the queued
+# per-output segments, so a later guided edit cannot resurrect them
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  DISPLAY=:0
+  xrandr() { printf "HDMI-1 connected primary 1920x1080+0+0\n   1920x1080     60.00*+\neDP-1 connected 1366x768+0+0\n   1366x768      60.06*+\n"; }
+  state_set dwm/xrandr "--output HDMI-1 --auto --output eDP-1 --off"
+  desktop_setup_menu
+  echo "xr=$(state_get dwm/xrandr)"
+  echo "segs=$(printf "%s\n" "${!SELECTIONS[@]}" | grep -c "^xrandr/")"
+' <<< "6
+4
+")
+assert_contains "$out" "xr=none"
+assert_contains "$out" "segs=0"
+
+# seeding from an existing dwm/xrandr string: reconfiguring ONE monitor via
+# the guided flow keeps the other monitor's segment in the composed string
+out=$(TUI_ACTIVE=0 bash -c '
+  source "'"$REPO_ROOT"'/manjaro-sl.sh"
+  declare -gA SELECTIONS=()
+  DISPLAY=:0
+  xrandr() { printf "HDMI-1 connected primary 1920x1080+0+0\n   1920x1080     60.00*+  144.00\neDP-1 connected 1366x768+0+0\n   1366x768      60.06*+\n"; }
+  state_set dwm/xrandr "--output eDP-1 --mode 1366x768 --rate 60.06"
+  desktop_setup_menu
+  echo "xr=$(state_get dwm/xrandr)"
+' <<< "6
+1
+2
+3
+1
+n
+")
+assert_contains "$out" "xr=--output HDMI-1 --mode 1920x1080 --rate 144.00 --output eDP-1 --mode 1366x768 --rate 60.06"
 
 # no detection (DISPLAY empty) falls back to a raw-arguments text box
 out=$(TUI_ACTIVE=0 bash -c '

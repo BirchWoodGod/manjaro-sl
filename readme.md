@@ -60,14 +60,23 @@ manjaro-sl        (banner: "existing setup detected — current settings loaded"
    slstatus network interface (radiolist of interfaces detected via `ip`,
    plus Custom… and Keep current — falls back to a plain text box if
    detection finds nothing), the battery widget, and **Display resolution
-   (xrandr)** — pick a connected output (detected via `xrandr` when an X
-   session is running) and a resolution (or Auto for the preferred mode),
-   and the chosen `xrandr` call is written into `~/.xinitrc` inside a
-   marked, idempotent block so it applies on every login. A **Custom xrandr
-   args…** entry accepts any raw argument string (multi-monitor layouts,
-   refresh rates like `--rate 144`, scaling); **Remove configured display
-   settings** deletes the block again. With no X session/xrandr available,
-   the picker falls back to a plain text box for raw arguments.
+   (xrandr)** — a guided, per-monitor picker. Every connected monitor
+   (detected via `xrandr` when an X session is running) is listed with what
+   it's currently running (or what change is queued); picking one walks you
+   through that monitor's own detected **resolutions** (current one
+   pre-selected, plus Auto for the preferred mode, plus Off to disable the
+   monitor), then the **refresh rates** available at the chosen resolution,
+   and — when more than one monitor is connected — its **layout position**
+   (left of / right of / above / below / mirror of another monitor) and
+   whether it's the **primary** monitor. The per-monitor choices are
+   composed into a single `xrandr` call written into `~/.xinitrc` inside a
+   marked, idempotent block so it applies on every login; re-visiting the
+   menu edits one monitor without losing the others. A **Custom xrandr
+   args…** entry still accepts any raw argument string (scaling, rotation,
+   anything the guided flow doesn't cover — it replaces the guided
+   settings); **Remove configured display settings** deletes the block
+   again. With no X session/xrandr available, the picker falls back to a
+   plain text box for raw arguments.
    Wallpaper/animation is not here — it lives in Appearance.
 2. **Appearance** — a screen for the Ly login-screen animation, an optional
    desktop wallpaper override, and the "Enable Ly on boot" checkbox (see

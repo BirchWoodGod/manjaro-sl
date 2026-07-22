@@ -51,9 +51,12 @@ pipeline). Behavior lives in `lib/*.sh`, sourced in this order:
 - `lib/wallpaper.sh` — generates `~/.config/manjaro-sl/wallpaper.sh` and wires a
   marked block into `~/.xinitrc`.
 - `lib/display.sh` — wires an `xrandr` call into `~/.xinitrc` (own marked
-  block, inserted above the wallpaper block); output/mode detection for the
-  TUI picker. `dwm/xrandr` sentinel: unset/`off` = don't touch, `none` =
-  remove the block.
+  block, inserted above the wallpaper block); output/mode/rate/current
+  detection for the guided per-monitor TUI (`display_menu` in
+  manjaro-sl.sh). The TUI edits one `xrandr/OUTPUT` segment key per monitor
+  and recomposes them (LC_ALL=C-sorted) into `dwm/xrandr`, the single
+  source of truth everything else consumes. `dwm/xrandr` sentinel:
+  unset/`off` = don't touch, `none` = remove the block.
 
 ## Selection state & apply pipeline
 

@@ -300,48 +300,134 @@ desktop_setup_menu() {
           *) user_set dwm/interface "$sel" ;;
         esac
         ;;
-      display)
-        local cur sel
-        cur=$(state_get dwm/xrandr); [ "$cur" = off ] && cur=""
-        local -a outs=()
-        local o
-        while IFS= read -r o; do outs+=("$o"); done < <(detect_xrandr_outputs)
-        if [ ${#outs[@]} -eq 0 ]; then
-          # No running X session / no xrandr — raw-arguments fallback, same
-          # shape as the interface picker's no-detection path.
-          sel=$(tui_input "Display (xrandr)" "No outputs detected; enter raw xrandr arguments ('none' removes a configured call)" "$cur") || continue
-          [ -n "$sel" ] && user_set dwm/xrandr "$sel"
-          continue
-        fi
-        local -a o_args=()
-        for o in "${outs[@]}"; do o_args+=("$o" "Connected output" off); done
-        o_args+=(custom "Custom xrandr args…" off \
-                 none "Remove configured display settings" off \
-                 keep "Keep current (${cur:-none})" on)
-        sel=$(tui_radiolist "Display (xrandr)" "Pick an output to set its resolution (written to ~/.xinitrc)" "${o_args[@]}") || continue
-        case "$sel" in
-          keep|"") ;;
-          none) user_set dwm/xrandr none ;;
-          custom)
-            sel=$(tui_input "Display (xrandr)" "xrandr arguments (everything after 'xrandr', e.g. --output HDMI-1 --mode 1920x1080 --rate 144)" "$cur") || continue
-            [ -n "$sel" ] && user_set dwm/xrandr "$sel"
-            ;;
-          *)
-            local output="$sel" m
-            local -a m_args=(auto "Auto (preferred mode)" on)
-            while IFS= read -r m; do m_args+=("$m" "Mode" off); done < <(detect_xrandr_modes "$output")
-            sel=$(tui_radiolist "Resolution" "Mode for $output (refresh rate via Custom xrandr args…)" "${m_args[@]}") || continue
-            if [ "$sel" = auto ] || [ -z "$sel" ]; then
-              user_set dwm/xrandr "--output $output --auto"
-            else
-              user_set dwm/xrandr "--output $output --mode $sel"
-            fi
-            ;;
-        esac
-        ;;
+      display) display_menu ;;
       back|"") return 0 ;;
     esac
   done
+}
+
+# Guided per-monitor display menu (segment helpers live in lib/display.sh).
+# Each connected monitor is configured on its own — resolution, refresh
+# rate, and (multi-monitor) layout position + primary — and the per-output
+# SELECTIONS[xrandr/*] segments are recomposed into the single dwm/xrandr
+# argument string that display_apply consumes.
+display_menu() {
+  local -a outs=()
+  local o
+  while IFS= read -r o; do outs+=("$o"); done < <(detect_xrandr_outputs)
+
+  if [ ${#outs[@]} -eq 0 ]; then
+    # No running X session / no xrandr — raw-arguments fallback, same shape
+    # as the interface picker's no-detection path.
+    local cur sel
+    cur=$(state_get dwm/xrandr); [ "$cur" = off ] && cur=""
+    sel=$(tui_input "Display (xrandr)" "No outputs detected (needs a running X session); enter raw xrandr arguments ('none' removes a configured call)" "$cur") || return 0
+    if [ -n "$sel" ]; then
+      display_clear_segments
+      user_set dwm/xrandr "$sel"
+    fi
+    return 0
+  fi
+
+  display_seed_segments
+
+  while true; do
+    local -a m_items=()
+    for o in "${outs[@]}"; do
+      m_items+=("$o" "$(display_output_desc "$o")")
+    done
+    m_items+=(custom "Custom xrandr args… (raw, replaces the guided settings)" \
+              none "Remove configured display settings" back "Back")
+    local pick
+    pick=$(tui_menu "Display (xrandr)" "Monitor" "${m_items[@]}") || return 0
+    case "$pick" in
+      back|"") return 0 ;;
+      none)
+        display_clear_segments
+        user_set dwm/xrandr none
+        ;;
+      custom)
+        local cur sel
+        cur=$(state_get dwm/xrandr); [ "$cur" = off ] && cur=""
+        sel=$(tui_input "Display (xrandr)" "xrandr arguments (everything after 'xrandr', e.g. --output HDMI-1 --mode 1920x1080 --rate 144)" "$cur") || continue
+        if [ -n "$sel" ]; then
+          display_clear_segments
+          user_set dwm/xrandr "$sel"
+        fi
+        ;;
+      *) display_configure_output "$pick" "${outs[@]}" ;;
+    esac
+  done
+}
+
+# display_configure_output OUT ALL_OUTS... — the guided flow for one
+# monitor: resolution radiolist (that monitor's detected modes) → refresh
+# rate radiolist (that resolution's detected rates) → with more than one
+# monitor, a layout position relative to another monitor and a primary
+# toggle. Composes SELECTIONS[xrandr/OUT] and rebuilds dwm/xrandr.
+display_configure_output() {
+  local out="$1"; shift
+  local -a outs=("$@")
+  local cur_mode="" cur_rate=""
+  read -r cur_mode cur_rate < <(detect_xrandr_current "$out") || true
+
+  local -a r_args=(auto "Auto (preferred mode)" "$([ -z "$cur_mode" ] && echo on || echo off)")
+  local m
+  while IFS= read -r m; do
+    r_args+=("$m" "$([ "$m" = "$cur_mode" ] && echo "Resolution (current)" || echo "Resolution")" \
+             "$([ "$m" = "$cur_mode" ] && echo on || echo off)")
+  done < <(detect_xrandr_modes "$out")
+  r_args+=(off_out "Off — disable this monitor" off)
+  local res
+  res=$(tui_radiolist "Resolution" "Mode for $out" "${r_args[@]}") || return 0
+
+  local seg=""
+  case "$res" in
+    "")      return 0 ;;
+    off_out) seg="--off" ;;
+    auto)    seg="--auto" ;;
+    *)
+      local -a f_args=(auto "Auto (let xrandr pick)" "$([ "$res" = "$cur_mode" ] && echo off || echo on)")
+      local r
+      while IFS= read -r r; do
+        f_args+=("$r" "$([ "$res" = "$cur_mode" ] && [ "$r" = "$cur_rate" ] && echo "Hz (current)" || echo "Hz")" \
+                 "$([ "$res" = "$cur_mode" ] && [ "$r" = "$cur_rate" ] && echo on || echo off)")
+      done < <(detect_xrandr_rates "$out" "$res")
+      local rate
+      rate=$(tui_radiolist "Refresh rate" "Rate for $out @ $res" "${f_args[@]}") || return 0
+      seg="--mode $res"
+      [ -n "$rate" ] && [ "$rate" != auto ] && seg+=" --rate $rate"
+      ;;
+  esac
+
+  # Layout position + primary only make sense with more than one monitor,
+  # and never for an output being turned off.
+  if [ ${#outs[@]} -gt 1 ] && [ "$seg" != "--off" ]; then
+    local -a p_args=(keep "Keep position" on)
+    local o2
+    for o2 in "${outs[@]}"; do
+      [ "$o2" = "$out" ] && continue
+      p_args+=("right-$o2" "Right of $o2" off "left-$o2" "Left of $o2" off \
+               "above-$o2" "Above $o2" off "below-$o2" "Below $o2" off \
+               "same-$o2" "Mirror $o2" off)
+    done
+    local pos
+    pos=$(tui_radiolist "Position" "Where does $out sit in the layout?" "${p_args[@]}") || return 0
+    case "$pos" in
+      keep|"") ;;
+      right-*) seg+=" --right-of ${pos#right-}" ;;
+      left-*)  seg+=" --left-of ${pos#left-}" ;;
+      above-*) seg+=" --above ${pos#above-}" ;;
+      below-*) seg+=" --below ${pos#below-}" ;;
+      same-*)  seg+=" --same-as ${pos#same-}" ;;
+    esac
+    if tui_yesno "Primary monitor" "Make $out the primary monitor (status bar / dmenu home)?"; then
+      seg+=" --primary"
+    fi
+  fi
+
+  user_set "xrandr/$out" "$seg"
+  display_rebuild_args
 }
 
 # select_wallpaper WP — the single chokepoint for writing dwm/wallpaper.
